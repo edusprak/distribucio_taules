@@ -1,4 +1,4 @@
-# Distribució de Taules
+# Distribució de taules
 
 Aplicació web per gestionar i distribuir alumnes en taules dins d'una aula. Permet la gestió dels alumnes, les taules i la distribució dels alumnes de manera visual mitjançant arrossegament (drag and drop).
 
