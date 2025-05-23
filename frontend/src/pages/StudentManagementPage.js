@@ -95,12 +95,12 @@ function StudentManagementPage() {
         setLoading(true); // O un estat de loading específic per a l'esborrat
         await studentService.deleteStudent(studentId);
         await fetchStudents(); // Refresca la llista d'alumnes
-        toast.warn(`Alumne amb ID ${studentId} esborrat correctament.`);
+        toast.success(`Alumne amb ID ${studentId} esborrat correctament.`);
       } catch (err) {
         const errorMessage = err.response?.data?.message || err.message || `Error en esborrar l'alumne ${studentId}.`;
         setError(errorMessage);
         console.error("Error deleting student:", err.response || err);
-        toast.warn(`Error en esborrar l'alumne: ${errorMessage}`);
+        toast.error(`Error en esborrar l'alumne: ${errorMessage}`);
       } finally {
         setLoading(false);
       }
@@ -131,9 +131,6 @@ function StudentManagementPage() {
       const errorMessage = error.message || (error.error ? `${error.error}: ${error.details || ''}` : JSON.stringify(error));
       console.error("Error guardant l'alumne:", error);
       setError(`Error guardant l'alumne: ${errorMessage}`); // Mostra l'error a la pàgina
-      // toast.warn() pot ser molest, considera mostrar l'error dins del formulari o a la pàgina
-      // toast.warn(`Error guardant l'alumne: ${errorMessage}`); 
-      // No tanquem el formulari si hi ha un error, perquè l'usuari pugui corregir
     } finally {
       setLoading(false);
     }
