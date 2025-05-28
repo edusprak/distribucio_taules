@@ -9,9 +9,9 @@ const db = require('./src/db');
 
 // Importar les rutes
 const studentRoutes = require('./src/routes/studentRoutes');
-const tableRoutes = require('./src/routes/tableRoutes');
+const plantillaAulaRoutes = require('./src/routes/plantillaAulaRoutes');
+const distribucioRoutes = require('./src/routes/distribucioRoutes');
 const assignmentRoutes = require('./src/routes/assignmentRoutes');
-const configurationRoutes = require('./src/routes/configurationRoutes');
 
 const app = express();
 
@@ -21,9 +21,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Muntar les rutes
 app.use('/api/students', studentRoutes);
-app.use('/api/tables', tableRoutes);
+app.use('/api/plantilles_aula', plantillaAulaRoutes); // AFEGIR AQUESTA
+app.use('/api/distribucions', distribucioRoutes); // ADAPTAR (proper pas, antic 'configurations')
 app.use('/api/assignments', assignmentRoutes);
-app.use('/api/configurations', configurationRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: "Benvingut/da a l'API de gestió de classe!" });

@@ -18,6 +18,6 @@ router.put('/:id', studentController.updateStudent);
 // DELETE /api/students/:id -> Esborra un alumne per ID
 router.delete('/:id', studentController.deleteStudent);
 
-router.post('/unassign-all', studentController.unassignAllStudentsFromTables);
+// router.post('/unassign-all', studentController.unassignAllStudentsFromTables);
 
 module.exports = router;
