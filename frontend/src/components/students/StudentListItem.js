@@ -42,7 +42,6 @@ const deleteButtonStyle = {
 };
 
 function StudentListItem({ student, onEdit, onDelete }) {
-  // Assegurem que academic_grade es mostra correctament
   const displayGrade = student.academic_grade !== null && student.academic_grade !== undefined 
                        ? parseFloat(student.academic_grade).toFixed(2) 
                        : 'N/A';

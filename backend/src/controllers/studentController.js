@@ -6,7 +6,12 @@ const getAllStudents = async (req, res) => {
   try {
     const query = `
       SELECT
-        s.id, s.name, s.academic_grade, s.gender,
+        s.id, 
+        s.name, 
+        s.academic_grade, 
+        s.gender, 
+        s.id_classe_alumne,
+        c.nom_classe, 
         (
           SELECT COALESCE(json_agg(DISTINCT r.restricted_student_id), '[]'::json)
           FROM (
@@ -20,18 +25,21 @@ const getAllStudents = async (req, res) => {
           ) AS r
         ) AS restrictions
       FROM students s
-      GROUP BY s.id
+      LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
+      GROUP BY s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe 
+      -- LA LÍNIA ANTERIOR ÉS LA CLAU: GROUP BY ha d'incloure totes les columnes no agregades de 's' i 'c'
       ORDER BY s.name ASC;
     `;
     const { rows } = await db.query(query);
-    const studentsWithRestrictions = rows.map(student => ({
+    const studentsWithDetails = rows.map(student => ({
         ...student,
+        class_name: student.nom_classe, 
         restrictions: student.restrictions || []
     }));
-    res.json(studentsWithRestrictions);
+    res.json(studentsWithDetails); // Envia directament l'array d'alumnes
   } catch (error) {
-    console.error('Error fetching all students with restrictions:', error);
-    res.status(500).json({ message: 'Error intern del servidor', error: error.message });
+    console.error('Error fetching all students with details:', error);
+    res.status(500).json({ message: 'Error intern del servidor a getAllStudents', error: error.message });
   }
 };
 
@@ -39,12 +47,24 @@ const getAllStudents = async (req, res) => {
 const getStudentById = async (req, res) => {
   const { id } = req.params;
   try {
-    const studentResult = await db.query('SELECT id, name, academic_grade, gender FROM students WHERE id = $1', [id]);
+    const studentResult = await db.query(
+        `SELECT s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe 
+         FROM students s
+         LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
+         WHERE s.id = $1`, [id]);
 
     if (studentResult.rows.length === 0) {
       return res.status(404).json({ message: 'Alumne no trobat' });
     }
-    const student = studentResult.rows[0];
+    const studentData = studentResult.rows[0];
+    const student = {
+        id: studentData.id,
+        name: studentData.name,
+        academic_grade: studentData.academic_grade,
+        gender: studentData.gender,
+        id_classe_alumne: studentData.id_classe_alumne,
+        class_name: studentData.nom_classe 
+    };
 
     const restrictionsResult = await db.query(
       `SELECT
@@ -60,23 +80,31 @@ const getStudentById = async (req, res) => {
     res.json(student);
   } catch (error) {
     console.error(`Error fetching student ${id}:`, error);
-    res.status(500).json({ message: 'Error intern del servidor', error: error.message });
+    res.status(500).json({ message: 'Error intern del servidor a getStudentById', error: error.message });
   }
 };
 
-// Funció per crear un nou alumne (sense table_id)
+// Funció per crear un nou alumne
 const createStudent = async (req, res) => {
-    const { name, academic_grade, gender, restrictions } = req.body;
+    const { name, academic_grade, gender, restrictions, id_classe_alumne } = req.body;
     if (!name || academic_grade === undefined) {
         return res.status(400).json({ message: 'El nom i la nota acadèmica són obligatoris.' });
     }
     try {
         await db.pool.query('BEGIN');
         const newStudentResult = await db.query(
-            'INSERT INTO students (name, academic_grade, gender) VALUES ($1, $2, $3) RETURNING id, name, academic_grade, gender',
-            [name, parseFloat(academic_grade), gender]
+            'INSERT INTO students (name, academic_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4) RETURNING id, name, academic_grade, gender, id_classe_alumne',
+            [name, parseFloat(academic_grade), gender, id_classe_alumne ? parseInt(id_classe_alumne) : null]
         );
-        const newStudent = newStudentResult.rows[0];
+        let newStudent = newStudentResult.rows[0];
+        
+        if (newStudent.id_classe_alumne) {
+            const classeRes = await db.query('SELECT nom_classe FROM classes WHERE id_classe = $1', [newStudent.id_classe_alumne]);
+            newStudent.class_name = classeRes.rows.length > 0 ? classeRes.rows[0].nom_classe : null;
+        } else {
+            newStudent.class_name = null;
+        }
+
         let createdRestrictionsIds = [];
         if (restrictions && restrictions.length > 0) {
             for (const restrictedStudentId of restrictions) {
@@ -88,7 +116,7 @@ const createStudent = async (req, res) => {
                         'INSERT INTO student_restrictions (student_id_1, student_id_2) VALUES ($1, $2)',
                         [id1, id2]
                     );
-                    createdRestrictionsIds.push(restrictedStudentId); // Retornem els IDs originals que es van intentar restringir
+                    createdRestrictionsIds.push(restrictedStudentId);
                 } catch (restrictionError) {
                     if (restrictionError.code !== '23505') { // Ignorar unique_violation
                         throw restrictionError;
@@ -102,22 +130,25 @@ const createStudent = async (req, res) => {
     } catch (error) {
         await db.pool.query('ROLLBACK');
         console.error('Error creating student:', error);
-        if (error.code === '23503') {
+        if (error.code === '23503') { 
+             if (error.constraint === 'fk_student_classe') {
+                return res.status(400).json({ message: 'Error de restricció: L\'ID de la classe proporcionat no existeix.', error: error.message });
+            }
             return res.status(400).json({ message: 'Error de restricció: un dels ID d\'alumne restringit no existeix.', error: error.message });
         }
-        if (error.code === '23514') {
+        if (error.code === '23514') { 
             return res.status(400).json({ message: 'Error de validació: la nota acadèmica ha d\'estar entre 0 i 10.', error: error.message });
         }
-        res.status(500).json({ message: 'Error intern del servidor', error: error.message });
+        res.status(500).json({ message: 'Error intern del servidor a createStudent', error: error.message });
     }
 };
 
-// Funció per actualitzar un alumne (sense table_id, la validació de restriccions es farà al desar distribució)
+// Funció per actualitzar un alumne
 const updateStudent = async (req, res) => {
     const { id } = req.params;
-    const { name, academic_grade, gender, restrictions } = req.body;
+    const { name, academic_grade, gender, restrictions, id_classe_alumne } = req.body;
 
-    if (name === undefined && academic_grade === undefined && gender === undefined && restrictions === undefined) {
+    if (name === undefined && academic_grade === undefined && gender === undefined && restrictions === undefined && id_classe_alumne === undefined) {
         return res.status(400).json({ message: 'S\'ha de proporcionar almenys un camp per actualitzar.' });
     }
 
@@ -139,24 +170,35 @@ const updateStudent = async (req, res) => {
             fieldsToUpdate.push(`gender = $${queryIndex++}`);
             values.push(gender);
         }
+        if (id_classe_alumne !== undefined) { 
+            fieldsToUpdate.push(`id_classe_alumne = $${queryIndex++}`);
+            values.push(id_classe_alumne === null || id_classe_alumne === '' ? null : parseInt(id_classe_alumne));
+        }
 
-        let updatedStudent;
+        let updatedStudentData;
         if (fieldsToUpdate.length > 0) {
             values.push(id);
-            const updateQuery = `UPDATE students SET ${fieldsToUpdate.join(', ')} WHERE id = $${queryIndex} RETURNING id, name, academic_grade, gender`;
+            const updateQuery = `UPDATE students SET ${fieldsToUpdate.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${queryIndex} RETURNING id, name, academic_grade, gender, id_classe_alumne`;
             const studentResult = await db.query(updateQuery, values);
             if (studentResult.rows.length === 0) {
                 await db.pool.query('ROLLBACK');
                 return res.status(404).json({ message: 'Alumne no trobat per actualitzar' });
             }
-            updatedStudent = studentResult.rows[0];
+            updatedStudentData = studentResult.rows[0];
         } else {
-            const studentResult = await db.query('SELECT id, name, academic_grade, gender FROM students WHERE id = $1', [id]);
+            const studentResult = await db.query('SELECT id, name, academic_grade, gender, id_classe_alumne FROM students WHERE id = $1', [id]);
             if (studentResult.rows.length === 0) {
                 await db.pool.query('ROLLBACK');
                 return res.status(404).json({ message: 'Alumne no trobat' });
             }
-            updatedStudent = studentResult.rows[0];
+            updatedStudentData = studentResult.rows[0];
+        }
+
+        if (updatedStudentData.id_classe_alumne) {
+            const classeRes = await db.query('SELECT nom_classe FROM classes WHERE id_classe = $1', [updatedStudentData.id_classe_alumne]);
+            updatedStudentData.class_name = classeRes.rows.length > 0 ? classeRes.rows[0].nom_classe : null;
+        } else {
+            updatedStudentData.class_name = null;
         }
 
         if (restrictions !== undefined) {
@@ -180,7 +222,7 @@ const updateStudent = async (req, res) => {
                     }
                 }
             }
-            updatedStudent.restrictions = updatedStudentRestrictionsIds;
+            updatedStudentData.restrictions = updatedStudentRestrictionsIds;
         } else {
              const currentRestrictionsResult = await db.query(
                 `SELECT CASE WHEN student_id_1 = $1 THEN student_id_2 ELSE student_id_1 END as restricted_with_student_id
@@ -188,25 +230,27 @@ const updateStudent = async (req, res) => {
                  WHERE student_id_1 = $1 OR student_id_2 = $1`,
                 [id]
             );
-            updatedStudent.restrictions = currentRestrictionsResult.rows.map(r => r.restricted_with_student_id);
+            updatedStudentData.restrictions = currentRestrictionsResult.rows.map(r => r.restricted_with_student_id);
         }
 
         await db.pool.query('COMMIT');
-        res.json(updatedStudent);
+        res.json(updatedStudentData);
     } catch (error) {
         await db.pool.query('ROLLBACK');
         console.error(`Error updating student ${id}:`, error);
-        if (error.code === '23503') {
-             return res.status(400).json({ message: 'Error de restricció: un dels ID d\'alumne restringit no existeix.', error: error.message });
+        if (error.code === '23503') { 
+             if (error.constraint === 'fk_student_classe') {
+                return res.status(400).json({ message: 'Error de restricció: L\'ID de la classe proporcionat no existeix.', error: error.message });
+            }
+            return res.status(400).json({ message: 'Error de restricció: Un dels ID d\'alumne restringit no existeix.', error: error.message });
         }
-        if (error.code === '23514') {
-             return res.status(400).json({ message: 'Error de validació: la nota acadèmica ha d\'estar entre 0 i 10.', error: error.message });
+        if (error.code === '23514') { 
+             return res.status(400).json({ message: 'Error de validació: La nota acadèmica ha d\'estar entre 0 i 10.', error: error.message });
         }
-        res.status(500).json({ message: 'Error intern del servidor', error: error.message });
+        res.status(500).json({ message: 'Error intern del servidor a updateStudent', error: error.message });
     }
 };
 
-// La funció deleteStudent ja és correcta perquè ON DELETE CASCADE s'ocupa de les restriccions.
 const deleteStudent = async (req, res) => {
     const { id } = req.params;
     try {
@@ -217,14 +261,9 @@ const deleteStudent = async (req, res) => {
         res.status(200).json({ message: `Alumne amb ID ${id} esborrat correctament` });
     } catch (error) {
         console.error(`Error deleting student ${id}:`, error);
-        res.status(500).json({ message: 'Error intern del servidor', error: error.message });
+        res.status(500).json({ message: 'Error intern del servidor a deleteStudent', error: error.message });
     }
 };
-
-// La funció unassignAllStudentsFromTables ja no té sentit amb el nou model,
-// ja que els alumnes no estan directament assignats a taules a la taula 'students'.
-// La desassignació es faria modificant o esborrant una 'distribució'.
-// Per tant, podem eliminar aquesta funció del controlador i la seva ruta.
 
 module.exports = {
   getAllStudents,
@@ -232,5 +271,4 @@ module.exports = {
   createStudent,
   updateStudent,
   deleteStudent,
-  // unassignAllStudentsFromTables, // ELIMINAR
 };

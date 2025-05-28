@@ -3,8 +3,8 @@ const db = require('../db');
 
 // Desar una nova distribució
 const saveDistribucio = async (req, res) => {
-    const { nom_distribucio, descripcio_distribucio, plantilla_id, assignacions } = req.body;
-    // assignacions = [{ alumne_id, taula_plantilla_id }, ...]
+    // AFEGIT selected_classes_ids
+    const { nom_distribucio, descripcio_distribucio, plantilla_id, assignacions, selected_classes_ids } = req.body;
 
     if (!nom_distribucio || !nom_distribucio.trim()) {
         return res.status(400).json({ success: false, message: "El nom de la distribució és obligatori." });
@@ -15,6 +15,11 @@ const saveDistribucio = async (req, res) => {
     if (!assignacions || !Array.isArray(assignacions)) {
         return res.status(400).json({ success: false, message: "S'ha de proporcionar un array d'assignacions." });
     }
+    // Validació per selected_classes_ids
+    if (!selected_classes_ids || !Array.isArray(selected_classes_ids) || selected_classes_ids.some(isNaN)) {
+        return res.status(400).json({ success: false, message: "S'ha de proporcionar un array d'IDs de classe seleccionades." });
+    }
+
 
     try {
         await db.pool.query('BEGIN');
@@ -25,37 +30,52 @@ const saveDistribucio = async (req, res) => {
         );
         const novaDistribucio = distribucioRes.rows[0];
 
+        // Desar assignacions d'alumnes
         if (assignacions.length > 0) {
             const placementValues = [];
-            const queryParams = [];
-            let paramCounter = 1;
+            const queryParamsAssignacions = [];
+            let paramCounterAssignacions = 1;
 
             for (const assignacio of assignacions) {
-                if (assignacio.alumne_id === undefined || assignacio.taula_plantilla_id === undefined) {
+                 if (assignacio.alumne_id === undefined || assignacio.taula_plantilla_id === undefined) { // taula_plantilla_id pot ser null
                     await db.pool.query('ROLLBACK');
                     return res.status(400).json({ success: false, message: `L'assignació per a l'alumne ${assignacio.alumne_id || 'desconegut'} no té ID d'alumne o de taula.` });
                 }
-                placementValues.push(`($${paramCounter++}, $${paramCounter++}, $${paramCounter++})`);
-                queryParams.push(novaDistribucio.id_distribucio);
-                queryParams.push(assignacio.alumne_id);
-                // Permetem taula_plantilla_id null per si un alumne està al "pool" dins una distribució
-                queryParams.push(assignacio.taula_plantilla_id === null ? null : parseInt(assignacio.taula_plantilla_id));
+                placementValues.push(`($${paramCounterAssignacions++}, $${paramCounterAssignacions++}, $${paramCounterAssignacions++})`);
+                queryParamsAssignacions.push(novaDistribucio.id_distribucio);
+                queryParamsAssignacions.push(assignacio.alumne_id);
+                queryParamsAssignacions.push(assignacio.taula_plantilla_id === null ? null : parseInt(assignacio.taula_plantilla_id));
             }
-
-            // Important: ON CONFLICT per si s'intenta desar una assignació per a un alumne que ja té una en aquesta distribució (si és el cas, s'actualitza)
-            // Això és útil si es desa una distribució modificada sobre una existent amb el mateix nom (encara que aquí estem creant una nova distribució amb nou ID)
-            // Per a una nova distribució, el ON CONFLICT (id_distribucio, alumne_id) no hauria d'activar-se si els alumnes són únics dins les 'assignacions' rebudes.
-            // La constraint UNIQUE (distribucio_id, alumne_id) a la BD s'encarregarà de les violacions.
             const assignacionsQuery = `
                 INSERT INTO distribucio_assignacions (distribucio_id, alumne_id, taula_plantilla_id) 
                 VALUES ${placementValues.join(', ')}
                 RETURNING alumne_id, taula_plantilla_id`;
-
-            const assignacionsRes = await db.query(assignacionsQuery, queryParams);
+            const assignacionsRes = await db.query(assignacionsQuery, queryParamsAssignacions);
             novaDistribucio.assignacions = assignacionsRes.rows;
         } else {
             novaDistribucio.assignacions = [];
         }
+
+        // Desar classes seleccionades per a la distribució
+        let savedSelectedClassIds = [];
+        if (selected_classes_ids && selected_classes_ids.length > 0) {
+            const filterValues = [];
+            const queryParamsFilter = [];
+            let paramCounterFilter = 1;
+            for (const id_classe of selected_classes_ids) {
+                filterValues.push(`($${paramCounterFilter++}, $${paramCounterFilter++})`);
+                queryParamsFilter.push(novaDistribucio.id_distribucio);
+                queryParamsFilter.push(parseInt(id_classe));
+            }
+            const filterQuery = `
+                INSERT INTO distribucio_classes_filter (distribucio_id, id_classe)
+                VALUES ${filterValues.join(', ')}
+                RETURNING id_classe`;
+            const filterRes = await db.query(filterQuery, queryParamsFilter);
+            savedSelectedClassIds = filterRes.rows.map(r => r.id_classe);
+        }
+        novaDistribucio.selected_classes_ids = savedSelectedClassIds;
+
 
         await db.pool.query('COMMIT');
         res.status(201).json({ success: true, distribucio: novaDistribucio });
@@ -71,8 +91,11 @@ const saveDistribucio = async (req, res) => {
                 userMessage += 'Un dels alumnes especificats no existeix.';
             } else if (error.constraint && error.constraint.includes('taula_plantilla_id')) {
                 userMessage += 'Una de les taules de plantilla especificades no existeix.';
-            } else {
-                userMessage += 'Alguna de les referències (plantilla, alumne o taula) no és vàlida.';
+            } else if (error.constraint && error.constraint.includes('id_classe')) {
+                userMessage += 'Una de les classes seleccionades per al filtre no existeix.';
+            }
+             else {
+                userMessage += 'Alguna de les referències (plantilla, alumne, taula o classe) no és vàlida.';
             }
             return res.status(400).json({ success: false, message: userMessage, error: error.detail || error.message });
         }
@@ -83,27 +106,8 @@ const saveDistribucio = async (req, res) => {
     }
 };
 
-// Obtenir totes les distribucions (opcionalment filtrades per plantilla_id)
-const getAllDistribucions = async (req, res) => {
-    const { plantilla_id } = req.query; // Permet filtrar per plantilla: /api/distribucions?plantilla_id=X
-    try {
-        let query = 'SELECT id_distribucio, nom_distribucio, descripcio_distribucio, plantilla_id, created_at FROM distribucions';
-        const params = [];
-        if (plantilla_id) {
-            query += ' WHERE plantilla_id = $1';
-            params.push(plantilla_id);
-        }
-        query += ' ORDER BY created_at DESC';
 
-        const result = await db.query(query, params);
-        res.json({ success: true, distribucions: result.rows });
-    } catch (error) {
-        console.error('Error obtenint totes les distribucions:', error);
-        res.status(500).json({ success: false, message: 'Error intern del servidor.', error: error.message });
-    }
-};
-
-// Obtenir una distribució específica (amb les seves assignacions)
+// Obtenir una distribució específica
 const getDistribucioById = async (req, res) => {
     const { id_distribucio } = req.params;
     try {
@@ -116,29 +120,48 @@ const getDistribucioById = async (req, res) => {
         }
         const distribucio = distribucioRes.rows[0];
 
+        // Obtenir assignacions
         const assignacionsRes = await db.query(
-            'SELECT alumne_id, taula_plantilla_id FROM distribucio_assignacions WHERE distribucio_id = $1',
+            `SELECT da.alumne_id, da.taula_plantilla_id, s.name as student_name, s.academic_grade, s.gender, cl.nom_classe as student_class_name,
+                    tp.identificador_taula_dins_plantilla as table_name, tp.capacitat as table_capacity
+             FROM distribucio_assignacions da
+             JOIN students s ON da.alumne_id = s.id
+             LEFT JOIN classes cl ON s.id_classe_alumne = cl.id_classe
+             LEFT JOIN taules_plantilla tp ON da.taula_plantilla_id = tp.id_taula_plantilla
+             WHERE da.distribucio_id = $1`,
             [id_distribucio]
         );
+        
+        distribucio.assignacions = assignacionsRes.rows.map(a => ({ 
+            alumne_id: a.alumne_id, 
+            taula_plantilla_id: a.taula_plantilla_id 
+        }));
+        
+        distribucio.assignacionsDetallades = assignacionsRes.rows.map(a => ({
+            alumne: { 
+                id: a.alumne_id, 
+                name: a.student_name, 
+                academic_grade: a.academic_grade, 
+                gender: a.gender,
+                class_name: a.student_class_name
+            },
+            taula: a.taula_plantilla_id ? { 
+                id_taula_plantilla: a.taula_plantilla_id,
+                identificador_taula_dins_plantilla: a.table_name,
+                capacitat: a.table_capacity
+            } : { id_taula_plantilla: null, identificador_taula_dins_plantilla: 'Pool', capacitat: Infinity }
+        }));
 
-        // Per cada assignació, voldrem també els detalls de l'alumne i la taula
-        const assignacionsDetallades = [];
-        for (const assignacio of assignacionsRes.rows) {
-            const alumneRes = await db.query('SELECT id, name, academic_grade, gender FROM students WHERE id = $1', [assignacio.alumne_id]);
-            const taulaRes = assignacio.taula_plantilla_id 
-                ? await db.query('SELECT id_taula_plantilla, identificador_taula_dins_plantilla, capacitat FROM taules_plantilla WHERE id_taula_plantilla = $1', [assignacio.taula_plantilla_id])
-                : { rows: [{ id_taula_plantilla: null, identificador_taula_dins_plantilla: 'Pool', capacitat: Infinity }] }; // Alumne al pool
-
-            if (alumneRes.rows.length > 0) { // Només afegim si l'alumne encara existeix
-                 assignacionsDetallades.push({
-                    alumne: alumneRes.rows[0],
-                    taula: taulaRes.rows[0] || { id_taula_plantilla: assignacio.taula_plantilla_id } // fallback si la taula no es trobés
-                });
-            }
-        }
-        distribucio.assignacionsDetallades = assignacionsDetallades;
-        // També retornem les assignacions simples per si el frontend les prefereix per actualitzar l'estat
-        distribucio.assignacions = assignacionsRes.rows.map(a => ({ alumne_id: a.alumne_id, taula_plantilla_id: a.taula_plantilla_id }));
+        // Obtenir classes filtrades per a aquesta distribució
+        const filterRes = await db.query(
+            `SELECT dcf.id_classe, c.nom_classe 
+             FROM distribucio_classes_filter dcf
+             JOIN classes c ON dcf.id_classe = c.id_classe
+             WHERE dcf.distribucio_id = $1`,
+            [id_distribucio]
+        );
+        distribucio.selected_classes = filterRes.rows.map(r => ({ id_classe: r.id_classe, nom_classe: r.nom_classe }));
+        distribucio.selected_classes_ids = filterRes.rows.map(r => r.id_classe);
 
 
         res.json({ success: true, distribucio });
@@ -148,7 +171,37 @@ const getDistribucioById = async (req, res) => {
     }
 };
 
-// Esborrar una distribució
+
+// getAllDistribucions i deleteDistribucio no necessiten canvis directes per aquesta funcionalitat.
+const getAllDistribucions = async (req, res) => {
+    const { plantilla_id } = req.query;
+    try {
+        let query = `
+            SELECT d.id_distribucio, d.nom_distribucio, d.descripcio_distribucio, d.plantilla_id, d.created_at,
+                   COALESCE(json_agg(DISTINCT jsonb_build_object('id_classe', c.id_classe, 'nom_classe', c.nom_classe)) FILTER (WHERE c.id_classe IS NOT NULL), '[]'::json) as filtered_classes
+            FROM distribucions d
+            LEFT JOIN distribucio_classes_filter dcf ON d.id_distribucio = dcf.distribucio_id
+            LEFT JOIN classes c ON dcf.id_classe = c.id_classe
+        `;
+        const params = [];
+        let whereClauseAdded = false;
+
+        if (plantilla_id) {
+            query += ' WHERE d.plantilla_id = $1';
+            params.push(plantilla_id);
+            whereClauseAdded = true;
+        }
+        
+        query += ' GROUP BY d.id_distribucio ORDER BY d.created_at DESC';
+
+        const result = await db.query(query, params);
+        res.json({ success: true, distribucions: result.rows });
+    } catch (error) {
+        console.error('Error obtenint totes les distribucions:', error);
+        res.status(500).json({ success: false, message: 'Error intern del servidor.', error: error.message });
+    }
+};
+
 const deleteDistribucio = async (req, res) => {
     const { id_distribucio } = req.params;
     try {
@@ -166,9 +219,6 @@ const deleteDistribucio = async (req, res) => {
     }
 };
 
-// (Opcional) Actualitzar una distribució (nom, descripció, o fins i tot les assignacions)
-// Això seria més complex si es volen actualitzar assignacions parcialment.
-// Per ara, esborrar i tornar a crear una distribució amb el mateix nom podria ser una alternativa.
 
 module.exports = {
     saveDistribucio,

@@ -7,20 +7,21 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import './App.css';
-import StudentManagementPage from './pages/StudentManagementPage'; //
-// import TableManagementPage from './pages/TableManagementPage'; // ELIMINAT
-import PlantillaAulaManagementPage from './pages/PlantillaAulaManagementPage'; // NOU
-import ClassroomArrangementPage from './pages/ClassroomArrangementPage'; // O el nou nom si el canvies
+import StudentManagementPage from './pages/StudentManagementPage';
+import ClassManagementPage from './pages/ClassManagementPage'; // NOVA PÀGINA
+import PlantillaAulaManagementPage from './pages/PlantillaAulaManagementPage';
+import ClassroomArrangementPage from './pages/ClassroomArrangementPage';
 
 function App() {
   return (
     <DndProvider backend={HTML5Backend}>
         <Router>
           <div className="App">
-            <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd' }}>
-              <Link to="/" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Inici</Link>
-              <Link to="/students" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Gestionar alumnes</Link>
-              <Link to="/plantilles-aula" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Gestionar plantilles</Link>
+            <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'center', gap: '15px' }}>
+              <Link to="/" style={{ textDecoration: 'none', color: '#333' }}>Inici</Link>
+              <Link to="/classes" style={{ textDecoration: 'none', color: '#333' }}>Gestionar classes</Link>
+              <Link to="/students" style={{ textDecoration: 'none', color: '#333' }}>Gestionar alumnes</Link>
+              <Link to="/plantilles-aula" style={{ textDecoration: 'none', color: '#333' }}>Gestionar plantilles</Link>
               <Link to="/distribucions" style={{ textDecoration: 'none', color: '#333' }}>Distribuir alumnes</Link>
             </nav>
 
@@ -28,6 +29,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/students" element={<StudentManagementPage />} /> 
+                <Route path="/classes" element={<ClassManagementPage />} /> {/* NOVA RUTA */}
                 <Route path="/plantilles-aula" element={<PlantillaAulaManagementPage />} />
                 <Route path="/distribucions" element={<ClassroomArrangementPage />} />
               </Routes>
@@ -47,7 +49,7 @@ function HomePage() {
       backgroundColor: '#f8f9fa',
       borderRadius: '12px',
       maxWidth: '900px',
-      margin: '0 auto',
+      margin: '20px auto', // Added margin
       boxShadow: '0 6px 18px rgba(0,0,0,0.1)'
     }}>
       <h1 style={{
@@ -55,29 +57,7 @@ function HomePage() {
         fontSize: '2.5rem',
         marginBottom: '20px',
         fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
-      }}>Aplicació de distribució d'alumnes per la guapa del Verduna</h1>
-      
-      <div style={{
-        margin: '30px auto',
-        position: 'relative',
-        maxWidth: '600px',
-        transition: 'transform 0.3s ease'
-      }}>
-        <img 
-          src="/alba.jpg" 
-          alt="Foto Alba" 
-          style={{ 
-            width: '100%',
-            height: 'auto',
-            borderRadius: '12px',
-            boxShadow: '0 8px 16px rgba(0,0,0,0.15)',
-            transition: 'transform 0.3s ease',
-            ':hover': {
-              transform: 'scale(1.02)'
-            }
-          }}
-        />
-      </div>
+      }}>Aplicació de distribució d'alumnes</h1>
       
       <p style={{
         fontSize: '1.2rem',
@@ -88,29 +68,23 @@ function HomePage() {
       
       <div style={{
         display: 'flex',
+        flexWrap: 'wrap', // Permet que els botons vagin a la línia següent si no caben
         justifyContent: 'center',
         gap: '15px',
         marginTop: '30px'
       }}>
-        <Link to="/students" style={{
-          padding: '12px 24px',
-          background: '#3498db',
-          color: 'white',
-          textDecoration: 'none',
-          borderRadius: '6px',
-          fontWeight: 'bold',
-          transition: 'background 0.2s ease'
-        }}>Gestionar alumnes</Link>
-        
-        <Link to="/arrange-classroom" style={{
-          padding: '12px 24px',
-          background: '#2ecc71',
-          color: 'white',
-          textDecoration: 'none',
-          borderRadius: '6px',
-          fontWeight: 'bold',
-          transition: 'background 0.2s ease'
-        }}>Distribuir alumnes</Link>
+         <Link to="/classes" className="home-button" style={{padding: '12px 24px', background: '#1abc9c', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold', transition: 'background 0.2s ease'}}>
+          Gestionar classes
+        </Link>
+        <Link to="/students" className="home-button" style={{padding: '12px 24px', background: '#3498db', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold', transition: 'background 0.2s ease'}}>
+          Gestionar alumnes
+        </Link>
+        <Link to="/plantilles-aula" className="home-button" style={{padding: '12px 24px', background: '#9b59b6', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold', transition: 'background 0.2s ease'}}>
+          Gestionar plantilles
+        </Link>
+        <Link to="/distribucions" className="home-button" style={{padding: '12px 24px', background: '#e67e22', color: 'white', textDecoration: 'none', borderRadius: '6px', fontWeight: 'bold', transition: 'background 0.2s ease'}}>
+          Distribuir alumnes
+        </Link>
       </div>
     </div>
   );

@@ -155,7 +155,7 @@ function StudentManagementPage() {
       
       {!isFormVisible && (
         <button style={buttonStyle} onClick={handleCreateNew}>
-          + Crear Nou Alumne
+          + Crear nou alumne
         </button>
       )}
 
