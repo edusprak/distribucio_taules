@@ -1,6 +1,6 @@
-# Distribució de taules
+# Distribució de Grups
 
-Aplicació web per gestionar i distribuir alumnes en taules dins d'una aula. Permet la gestió dels alumnes, les taules i la distribució dels alumnes de manera visual mitjançant arrossegament (drag and drop).
+Aplicació web per gestionar i distribuir alumnes en grups dins d'una aula. Permet la gestió dels alumnes, els grups i la distribució dels alumnes de manera visual mitjançant arrossegament (drag and drop).
 
 ## Índex
 
@@ -13,13 +13,13 @@ Aplicació web per gestionar i distribuir alumnes en taules dins d'una aula. Per
 
 ## Descripció
 
-L'aplicació Distribució de Taules és una eina dissenyada per ajudar els docents a organitzar les taules i els alumnes dins de l'aula. Permet crear, editar i gestionar alumnes i taules, així com assignar alumnes a taules específiques mitjançant una interfície intuïtiva de  drag and drop.
+L'aplicació Distribució de Grups és una eina dissenyada per ajudar els docents a organitzar els i els alumnes dins de l'aula. Permet crear, editar i gestionar alumnes i grups, així com assignar alumnes a grups específics mitjançant una interfície intuïtiva de  drag and drop.
 
 ## Funcionalitats
 
 - **Gestió d'alumnes**: Crear, editar, veure i eliminar alumnes.
-- **Gestió de taules**: Crear, editar, veure i eliminar taules.
-- **Distribució d'alumnes**: Assignar alumnes a taules mitjançant drag and drop.
+- **Gestió de grups**: Crear, editar, veure i eliminar grups.
+- **Distribució d'alumnes**: Assignar alumnes a grups mitjançant drag and drop.
 - **Guardar configuracions**: Guardar i recuperar diferents configuracions de distribució d'alumnes.
 
 ## Tecnologies

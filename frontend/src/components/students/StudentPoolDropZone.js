@@ -38,31 +38,28 @@ const dropInfoStyle = {
 
 function StudentPoolDropZone({ onDropToPool, children, unassignedStudentsCount }) {
   const [{ canDrop, isOver }, drop] = useDrop(() => ({
-    accept: ItemTypes.STUDENT, //
+    accept: ItemTypes.STUDENT,
     canDrop: (item) => {
-      // Només es pot deixar anar si l'alumne prové d'una taula
-      // (item.originalTableId no és null o undefined)
-      return item.originalTableId != null; // Compara amb null o undefined
+      // Només es pot deixar anar si l'alumne prové d'una taula (té un originalTableId que NO és null)
+      return item.originalTableId != null; 
     },
     drop: (item) => {
-      // Si l'alumne prové d'una taula, crida a la funció per desassignar-lo.
-      // 'item' conté { id, name, ..., originalTableId } que vam definir a DraggableStudentCard
-      if (item.originalTableId != null) { // Compara amb null o undefined
-        onDropToPool(item.id, item.originalTableId);
+      if (item.originalTableId != null) { // Si ve d'una taula
+        onDropToPool(item.id, item.originalTableId); // originalTableId aquí és l'ID de la taula_plantilla
       }
     },
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
       canDrop: !!monitor.canDrop(),
     }),
-  }), [onDropToPool]); // Dependència per si la funció onDropToPool canvia
+  }), [onDropToPool]);
 
   return (
     <div ref={drop} style={poolDropZoneActiveStyle(isOver, canDrop)}>
       <h3 style={poolHeaderStyle}>
         Alumnes no assignats ({unassignedStudentsCount})
       </h3>
-      {children} {/* Aquí es renderitzaran els DraggableStudentCard del pool */}
+      {children}
       {isOver && canDrop && <p style={dropInfoStyle}>Deixa anar aquí per desassignar</p>}
       {isOver && !canDrop && <p style={{...dropInfoStyle, color: 'red'}}>Només alumnes de taules</p>}
     </div>

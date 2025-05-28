@@ -148,7 +148,7 @@ function StudentManagementPage() {
 
   return (
     <div style={pageStyle}>
-      <h2>Gestió d'Alumnes</h2>
+      <h2>Gestió d'alumnes</h2>
       
       {/* Mostra errors generals o de guardat si n'hi ha i el formulari no està obert o és un error no relacionat amb el formulari */}
       {error && !isFormVisible && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}

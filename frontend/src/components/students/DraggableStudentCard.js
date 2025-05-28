@@ -17,69 +17,52 @@ const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself) => ({ // H
   transition: 'background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease',
 });
 
-function DraggableStudentCard({ student, onDragEnd }) { 
-  const { draggedStudentInfo, startDraggingStudent, stopDraggingStudent } = useDragState();
 
-  const [{ isDragging }, drag] = useDrag(() => ({ // preview es pot ometre si no fas previsualització personalitzada
-    type: ItemTypes.STUDENT, //
-    // 'item' ara és una funció que s'executa quan comença l'arrossegament
-    item: () => {
-      // Lògica que abans estava a 'begin'
-      console.log(`[DragContext] Start dragging (from item function): ${student.name}, Restrictions:`, student.restrictions);
-      startDraggingStudent(student.id, student.restrictions || []);
+function DraggableStudentCard({ student }) { 
+    // student ara té { id, name, academic_grade, gender, restrictions, taula_plantilla_id (si està assignat), originalTableId (per al pool) }
+    const { draggedStudentInfo, startDraggingStudent, stopDraggingStudent } = useDragState();
 
-      // Retorna l'objecte que representa l'element arrossegat
-      return { 
-          id: student.id, 
-          name: student.name, 
-          academic_grade: student.academic_grade,
-          gender: student.gender,
-          restrictions: student.restrictions || [],
-          originalTableId: student.originalTableId || student.table_id || null 
-      };
-    },
-    collect: (monitor) => ({
-      isDragging: !!monitor.isDragging(),
-    }),
-    // La funció 'end' es manté igual, però rep l' 'item' retornat per la funció item()
-    end: (draggedItem, monitor) => { // 'draggedItem' és l'objecte que has retornat a la funció item()
-      console.log(`[DragContext] Stop dragging: ${draggedItem.name}`);
-      stopDraggingStudent();
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: ItemTypes.STUDENT,
+        item: () => {
+            startDraggingStudent(student.id, student.restrictions || []);
+            return { 
+                id: student.id, 
+                name: student.name, 
+                academic_grade: student.academic_grade,
+                gender: student.gender,
+                restrictions: student.restrictions || [],
+                // originalTableId ara és la taula_plantilla_id actual de l'alumne, o null si ve del pool
+                originalTableId: student.taula_plantilla_id !== undefined ? student.taula_plantilla_id : student.originalTableId
+            };
+        },
+        collect: (monitor) => ({
+            isDragging: !!monitor.isDragging(),
+        }),
+        end: (draggedItem, monitor) => {
+            stopDraggingStudent();
+            // La lògica de 'end' (per exemple, per gestionar drops fora de zones vàlides)
+            // es gestiona principalment a ClassroomArrangementPage a través de onDropToPool.
+            // No cal un 'onDragEnd' prop aquí si StudentPoolDropZone i DroppableTable gestionen el drop.
+        },
+    }), [student, startDraggingStudent, stopDraggingStudent]);
 
-      const didDrop = monitor.didDrop();
-      // Important: utilitza draggedItem.originalTableId i draggedItem.id
-      if (!didDrop && draggedItem.originalTableId !== null) {
-        console.log(`[DraggableStudentCard END] Attempting to UNASSIGN student ${draggedItem.id} from table ${draggedItem.originalTableId}`);
-        if (onDragEnd) {
-          onDragEnd(draggedItem.id, draggedItem.originalTableId);
-        } else {
-          console.warn('[DraggableStudentCard END] onDragEnd prop is NOT defined for student:', draggedItem.name);
+    let isRestrictedWithDragged = false;
+    let isThisCardActuallyBeingDragged = false;
+
+    if (draggedStudentInfo && draggedStudentInfo.id === student.id) {
+        isThisCardActuallyBeingDragged = true;
+    } else if (draggedStudentInfo && draggedStudentInfo.id !== student.id) {
+        if (draggedStudentInfo.restrictions.includes(student.id)) {
+            isRestrictedWithDragged = true;
         }
-      } else if (didDrop) {
-        console.log(`[DraggableStudentCard END] Student ${draggedItem.id} was dropped on a valid target.`);
-      } else if (draggedItem.originalTableId === null) {
-        console.log(`[DraggableStudentCard END] Student ${draggedItem.id} came from the pool and was not dropped on a valid target.`);
-      }
-    },
-  }), [student, onDragEnd, startDraggingStudent, stopDraggingStudent]); // Manté les dependències
-
-  let isRestrictedWithDragged = false;
-  let isThisCardActuallyBeingDragged = false; // Per diferenciar de 'isDragging' del hook que afecta l'opacitat
-
-  if (draggedStudentInfo && draggedStudentInfo.id === student.id) {
-      isThisCardActuallyBeingDragged = true; // Aquesta és la targeta que s'està arrossegant
-  } else if (draggedStudentInfo && draggedStudentInfo.id !== student.id) {
-    // Un altre alumne s'està arrossegant, comprovem si aquesta targeta és una restricció
-    if (draggedStudentInfo.restrictions.includes(student.id)) {
-      isRestrictedWithDragged = true;
     }
-  }
 
-  return (
-    <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged)}> 
-      {student.name} (Nota: {parseFloat(student.academic_grade).toFixed(2)})
-    </div>
-  );
+    return (
+        <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged)}> 
+            {student.name} (Nota: {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(2) : 'N/A'})
+        </div>
+    );
 }
 
 export default DraggableStudentCard;

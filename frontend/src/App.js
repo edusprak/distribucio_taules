@@ -3,55 +3,38 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-import { ToastContainer, toast } from 'react-toastify'; // <-- IMPORTA toast i ToastContainer
-import 'react-toastify/dist/ReactToastify.css'; // <-- IMPORTA EL CSS PER ALS ESTILS DELS TOASTS
-
-import './App.css'; //
+import './App.css';
 import StudentManagementPage from './pages/StudentManagementPage'; //
-import TableManagementPage from './pages/TableManagementPage'; //
-import ClassroomArrangementPage from './pages/ClassroomArrangementPage'; //
+// import TableManagementPage from './pages/TableManagementPage'; // ELIMINAT
+import PlantillaAulaManagementPage from './pages/PlantillaAulaManagementPage'; // NOU
+import ClassroomArrangementPage from './pages/ClassroomArrangementPage'; // O el nou nom si el canvies
 
 function App() {
   return (
     <DndProvider backend={HTML5Backend}>
-      {/* DragProvider anava aquí si el vas posar a App.js, mantén-lo si és el cas */}
-      {/* <DragProvider> */}
         <Router>
           <div className="App">
             <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd' }}>
               <Link to="/" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Inici</Link>
               <Link to="/students" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Gestionar alumnes</Link>
-              <Link to="/tables" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Gestionar taules</Link>
-              <Link to="/arrange-classroom" style={{ textDecoration: 'none', color: '#333' }}>Distribuir alumnes</Link>
+              <Link to="/plantilles-aula" style={{ marginRight: '15px', textDecoration: 'none', color: '#333' }}>Gestionar plantilles</Link>
+              <Link to="/distribucions" style={{ textDecoration: 'none', color: '#333' }}>Distribuir alumnes</Link>
             </nav>
 
             <main style={{ padding: '20px' }}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/students" element={<StudentManagementPage />} /> 
-                <Route path="/tables" element={<TableManagementPage />} /> 
-                <Route path="/arrange-classroom" element={<ClassroomArrangementPage />} /> 
+                <Route path="/plantilles-aula" element={<PlantillaAulaManagementPage />} />
+                <Route path="/distribucions" element={<ClassroomArrangementPage />} />
               </Routes>
             </main>
-
-            {/* AFEGEIX ToastContainer AQUÍ */}
-            {/* Pots configurar-lo amb opcions, ex: position, autoClose, etc. */}
-            <ToastContainer
-              position="top-right"
-              autoClose={5000} // Tanca automàticament després de 5 segons
-              hideProgressBar={false}
-              newestOnTop={false}
-              closeOnClick
-              rtl={false}
-              pauseOnFocusLoss
-              draggable
-              pauseOnHover
-              theme="colored" // Pots provar "light", "dark", "colored"
-            />
+            <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />
           </div>
         </Router>
-      {/* </DragProvider> */}
     </DndProvider>
   );
 }
@@ -117,7 +100,7 @@ function HomePage() {
           borderRadius: '6px',
           fontWeight: 'bold',
           transition: 'background 0.2s ease'
-        }}>Gestionar Alumnes</Link>
+        }}>Gestionar alumnes</Link>
         
         <Link to="/arrange-classroom" style={{
           padding: '12px 24px',
@@ -127,7 +110,7 @@ function HomePage() {
           borderRadius: '6px',
           fontWeight: 'bold',
           transition: 'background 0.2s ease'
-        }}>Distribuir Alumnes</Link>
+        }}>Distribuir alumnes</Link>
       </div>
     </div>
   );

@@ -81,6 +81,12 @@ const getAllPlantillesAula = async (req, res) => {
 // Obtenir una plantilla d'aula específica (amb les seves taules)
 const getPlantillaAulaById = async (req, res) => {
     const { id_plantilla } = req.params;
+
+    console.log("------- INICI getPlantillaAulaById -------");
+    console.log("req.params:", JSON.stringify(req.params, null, 2));
+    console.log("Valor de 'id_plantilla' extret:", id_plantilla);
+    console.log("Tipus de 'id_plantilla':", typeof id_plantilla);
+
     try {
         const plantillaRes = await db.query(
             'SELECT id_plantilla, nom_plantilla, descripcio_plantilla, created_at FROM aula_plantilles WHERE id_plantilla = $1',
