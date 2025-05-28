@@ -1,7 +1,7 @@
 // frontend/src/services/studentService.js
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_BASE_URL ? `${process.env.REACT_APP_API_BASE_URL}/api/students` : 'http://localhost:3001/api/students';
+const API_URL = process.env.REACT_APP_API_BASE_URL ? `${process.env.REACT_APP_API_BASE_URL}/students` : 'http://localhost:3001/api/students';
 
 
 // Funció per obtenir tots els alumnes
