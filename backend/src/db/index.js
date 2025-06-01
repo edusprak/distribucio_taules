@@ -7,9 +7,9 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: parseInt(process.env.DB_PORT || "5432"), // El port ha de ser un número
-  ssl: {
-    rejectUnauthorized: false // Això és per a proves, considera opcions més segures per a producció
-  }
+  // ssl: {
+  //   rejectUnauthorized: false // Això és per a proves, considera opcions més segures per a producció
+  // }
 
 });
 
