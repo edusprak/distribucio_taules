@@ -1,9 +1,10 @@
 // frontend/src/components/students/StudentForm.js
 import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify'; // <-- IMPORTA toast
-import Select from 'react-select'; // Per a la selecció múltiple de restriccions
+import { toast } from 'react-toastify';
+import Select from 'react-select'; // Per a restriccions i ara per a classes
+import classService from '../../services/classService'; // NOU: Per carregar classes
 
-// Estils bàsics (pots moure'ls a CSS)
+// Estils (es mantenen, pots ajustar si cal)
 const formStyle = {
   border: '1px solid #ccc',
   padding: '20px',
@@ -36,15 +37,21 @@ const saveButtonStyle = {
 const cancelButtonStyle = {
     padding: '10px 15px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
 };
+const selectStyles = { // Estils comuns per als Select
+    control: base => ({ ...base, ...inputStyle, padding: 0, marginBottom: '15px', height: 'auto' }),
+    input: base => ({ ...base, margin: '0px'}),
+    valueContainer: base => ({ ...base, padding: '0 8px'}),
+};
 
 
 function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
   const [name, setName] = useState('');
   const [academicGrade, setAcademicGrade] = useState('');
   const [gender, setGender] = useState('');
-  const [selectedRestrictions, setSelectedRestrictions] = useState([]); // Emmagatzema objectes { value, label }
+  const [selectedClass, setSelectedClass] = useState(null); // NOU: { value: id_classe, label: nom_classe }
+  const [availableClasses, setAvailableClasses] = useState([]); // NOU: Llista de classes per al selector
+  const [selectedRestrictions, setSelectedRestrictions] = useState([]);
 
-  // Opcions per al selector de gènere (exemple)
   const genderOptions = [
     { value: 'male', label: 'Masculí' },
     { value: 'female', label: 'Femení' },
@@ -52,37 +59,58 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
     { value: 'prefer_not_to_say', label: 'Prefereixo no dir-ho' },
   ];
 
-  // Prepara les opcions per al multi-select de restriccions
-  // Exclou l'alumne actual (si s'està editant) de les opcions de restricció
   const studentOptionsForRestrictions = allStudents
     .filter(s => !studentToEdit || s.id !== studentToEdit.id) 
     .map(s => ({ value: s.id, label: s.name }));
+
+  // Carregar classes disponibles quan el component es munta
+  useEffect(() => {
+    const fetchClasses = async () => {
+        try {
+            const response = await classService.getAllClasses();
+            if (response.success) {
+                setAvailableClasses(response.classes.map(c => ({ value: c.id_classe, label: c.nom_classe })));
+            } else {
+                toast.error("Error carregant les classes disponibles.");
+            }
+        } catch (error) {
+            toast.error("Error carregant les classes disponibles: " + (error.message || "Error desconegut"));
+        }
+    };
+    fetchClasses();
+  }, []);
 
   useEffect(() => {
     if (studentToEdit) {
       setName(studentToEdit.name || '');
       setAcademicGrade(studentToEdit.academic_grade !== null ? String(studentToEdit.academic_grade) : '');
       setGender(studentToEdit.gender || '');
+      
+      // Trobar l'objecte de la classe per al Select
+      if (studentToEdit.id_classe_alumne && availableClasses.length > 0) {
+        const currentStudentClass = availableClasses.find(c => c.value === studentToEdit.id_classe_alumne);
+        setSelectedClass(currentStudentClass || null);
+      } else {
+        setSelectedClass(null);
+      }
 
-      // Converteix l'array d'IDs de restriccions de studentToEdit
-      // a l'array d'objectes { value, label } que react-select espera
       if (studentToEdit.restrictions && studentToEdit.restrictions.length > 0) {
         const currentRestrictionObjects = studentToEdit.restrictions.map(id => {
           const restrictedStudent = allStudents.find(s => s.id === id);
           return restrictedStudent ? { value: restrictedStudent.id, label: restrictedStudent.name } : null;
-        }).filter(Boolean); // filter(Boolean) elimina els nulls si algun ID no es troba
+        }).filter(Boolean);
         setSelectedRestrictions(currentRestrictionObjects);
       } else {
         setSelectedRestrictions([]);
       }
     } else {
-      // Mode creació: reseteja els camps
       setName('');
       setAcademicGrade('');
       setGender('');
+      setSelectedClass(null); // Resetejar classe
       setSelectedRestrictions([]);
     }
-  }, [studentToEdit, allStudents]); // Es re-executa si studentToEdit o allStudents canvien
+  }, [studentToEdit, allStudents, availableClasses]); // Afegit availableClasses a les dependències
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -99,8 +127,8 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
     const studentData = {
       name,
       academic_grade: grade,
-      gender: gender || null, // Envia null si el gènere està buit
-      // Converteix l'array d'objectes {value, label} de nou a un array d'IDs
+      gender: gender || null,
+      id_classe_alumne: selectedClass ? selectedClass.value : null, // Enviar l'ID de la classe
       restrictions: selectedRestrictions.map(r => r.value), 
     };
     onSave(studentData);
@@ -120,17 +148,30 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
         />
       </div>
       <div>
-        <label htmlFor="academicGrade" style={labelStyle}>Nota Acadèmica (0-10):</label>
+        <label htmlFor="academicGrade" style={labelStyle}>Valor (0-10):</label>
         <input
           type="number"
           id="academicGrade"
           style={inputStyle}
           value={academicGrade}
           onChange={(e) => setAcademicGrade(e.target.value)}
-          step="0.01" // Permet decimals
+          step="0.01"
           min="0"
           max="10"
           required
+        />
+      </div>
+      <div>
+        <label htmlFor="studentClass" style={labelStyle}>Classe:</label>
+        <Select
+            id="studentClass"
+            options={availableClasses}
+            value={selectedClass}
+            onChange={setSelectedClass}
+            placeholder="Selecciona classe..."
+            isClearable
+            noOptionsMessage={() => "No hi ha classes disponibles. Crea'n primer a 'Gestionar Classes'."}
+            styles={selectStyles}
         />
       </div>
       <div>
@@ -142,28 +183,20 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
             onChange={selectedOption => setGender(selectedOption ? selectedOption.value : '')}
             placeholder="Selecciona gènere..."
             isClearable
-            styles={{ // Estils per fer-lo semblant als altres inputs
-                control: base => ({ ...base, ...inputStyle, padding: 0, marginBottom: '15px', height: 'auto' }),
-                input: base => ({ ...base, margin: '0px'}), // Ajust per al text de l'input
-                valueContainer: base => ({ ...base, padding: '0 8px'}), // Ajust per al valor seleccionat
-            }}
+            styles={selectStyles}
         />
       </div>
       <div>
         <label htmlFor="restrictions" style={labelStyle}>No pot seure amb (Restriccions):</label>
         <Select
           id="restrictions"
-          isMulti // Permet selecció múltiple
+          isMulti
           options={studentOptionsForRestrictions}
           value={selectedRestrictions}
           onChange={setSelectedRestrictions}
           placeholder="Selecciona alumnes..."
           noOptionsMessage={() => "No hi ha altres alumnes per seleccionar"}
-          styles={{
-            control: base => ({ ...base, ...inputStyle, padding: 0, height: 'auto' }),
-            input: base => ({ ...base, margin: '0px'}),
-            valueContainer: base => ({ ...base, padding: '0 8px'}),
-          }}
+          styles={selectStyles}
         />
       </div>
       <div style={buttonContainerStyle}>
