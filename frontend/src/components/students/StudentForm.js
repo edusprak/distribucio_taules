@@ -148,7 +148,7 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
         />
       </div>
       <div>
-        <label htmlFor="academicGrade" style={labelStyle}>Nota acadèmica (0-10):</label>
+        <label htmlFor="academicGrade" style={labelStyle}>Valor (0-10):</label>
         <input
           type="number"
           id="academicGrade"
