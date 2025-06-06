@@ -1,29 +1,40 @@
 // frontend/src/pages/StudentManagementPage.js
-import React, { useState, useEffect } from 'react';
-import { toast } from 'react-toastify'; // <-- IMPORTA toast
+import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'react-toastify';
 
 import studentService from '../services/studentService';
 import StudentList from '../components/students/StudentList';
-import StudentForm from '../components/students/StudentForm'; // Assegura't que aquest component ja existeix
+import StudentForm from '../components/students/StudentForm';
+import ConfirmModal from '../components/ConfirmModal';
 
-
-// Estils bàsics (pots moure'ls a un fitxer CSS o definir-los aquí)
+// Estilos
 const pageStyle = {
     maxWidth: '800px',
     margin: '0 auto',
     padding: '20px',
-    fontFamily: 'Arial, sans-serif', // Un tipus de lletra base per exemple
+    fontFamily: 'Arial, sans-serif',
 };
 
 const buttonStyle = {
     padding: '10px 15px',
     fontSize: '1em',
-    backgroundColor: '#28a745', // Verd per a "crear"
+    backgroundColor: '#28a745',
     color: 'white',
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
     marginBottom: '20px',
+};
+
+// NUEVO: Estilo para el input de búsqueda
+const searchInputStyle = {
+    padding: '10px',
+    fontSize: '1em',
+    border: '1px solid #ccc',
+    borderRadius: '4px',
+    marginBottom: '20px',
+    width: 'calc(100% - 22px)', // Ocupa todo el ancho menos el padding y borde
+    boxSizing: 'border-box',
 };
 
 const loadingErrorStyle = {
@@ -33,116 +44,142 @@ const loadingErrorStyle = {
 };
 
 function StudentManagementPage() {
-  const [students, setStudents] = useState([]); // Llista de tots els alumnes
-  const [loading, setLoading] = useState(true); // Estat de càrrega general
-  const [error, setError] = useState(null); // Per a missatges d'error
+  const [allStudents, setAllStudents] = useState([]); // Lista original de todos los alumnos
+  const [filteredStudents, setFilteredStudents] = useState([]); // Lista de alumnos a mostrar (filtrada)
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  const [isFormVisible, setIsFormVisible] = useState(false); // Controla la visibilitat del formulari
-  const [editingStudent, setEditingStudent] = useState(null); // Emmagatzema l'alumne que s'està editant, o null si es crea
+  const [isFormVisible, setIsFormVisible] = useState(false);
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState(null);
+  
+  const [searchTerm, setSearchTerm] = useState(''); // NUEVO ESTADO para el término de búsqueda
 
-  // Funció per carregar (o refrescar) la llista d'alumnes des del backend
-  const fetchStudents = async () => {
+  // Cargar alumnos
+  const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
       const data = await studentService.getAllStudents();
-      setStudents(data);
-      setError(null); // Reseteja errors anteriors si la càrrega és exitosa
+      setAllStudents(data);
+      // Inicialmente no filtramos, el useEffect de abajo lo hará
+      // setFilteredStudents(data); 
+      setError(null);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || 'Error en carregar els alumnes.';
       setError(errorMessage);
       console.error("Error fetching students:", err);
-      setStudents([]); // Reseteja alumnes en cas d'error per evitar mostrar dades antigues
+      setAllStudents([]);
+      // setFilteredStudents([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // useEffect per carregar els alumnes inicialment quan el component es munta
   useEffect(() => {
     fetchStudents();
-  }, []); // L'array de dependències buit assegura que s'executa només un cop
+  }, [fetchStudents]);
 
-  // Handler per obrir el formulari en mode "crear nou alumne"
+  // NUEVO: useEffect para filtrar alumnos cuando searchTerm o allStudents cambian
+  useEffect(() => {
+    if (!searchTerm) {
+      setFilteredStudents(allStudents); // Si no hay término, muestra todos
+    } else {
+      const lowercasedSearchTerm = searchTerm.toLowerCase();
+      const filtered = allStudents.filter(student =>
+        student && student.name && student.name.toLowerCase().includes(lowercasedSearchTerm)
+      );
+      setFilteredStudents(filtered);
+    }
+  }, [searchTerm, allStudents]);
+
   const handleCreateNew = () => {
-    setEditingStudent(null); // Assegura que no hi ha cap alumne en edició
-    setIsFormVisible(true); // Mostra el formulari
+    setEditingStudent(null);
+    setIsFormVisible(true);
+    setError(null); // Limpiar errores al abrir el formulario
   };
 
-  // Handler per obrir el formulari en mode "editar alumne"
-  // Carrega les dades completes de l'alumne (incloent restriccions) abans de mostrar el formulari
   const handleEditStudent = async (studentBasics) => {
     try {
-      setLoading(true); // Indica càrrega de dades per a l'edició
-      const fullStudentData = await studentService.getStudentById(studentBasics.id);
-      setEditingStudent(fullStudentData); // Alumne complet amb restriccions
-      setIsFormVisible(true); // Mostra el formulari
+      setLoading(true);
+      const fullStudentData = await studentService.getStudentById(studentBasics.id); //
+      setEditingStudent(fullStudentData);
+      setIsFormVisible(true);
       setError(null);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || "Error en carregar les dades de l'alumne per editar.";
       console.error("Error fetching student details for editing:", err);
       setError(errorMessage);
-      setIsFormVisible(false); // No obrim el formulari si hi ha error
+      toast.error(errorMessage); // Notificar al usuario
+      setIsFormVisible(false);
       setEditingStudent(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // Handler per esborrar un alumne
-  const handleDeleteStudent = async (studentId) => {
-    if (window.confirm(`Segur que vols esborrar l'alumne amb ID ${studentId}? Aquesta acció no es pot desfer.`)) {
-      try {
-        setLoading(true); // O un estat de loading específic per a l'esborrat
-        await studentService.deleteStudent(studentId);
-        await fetchStudents(); // Refresca la llista d'alumnes
-        toast.success(`Alumne amb ID ${studentId} esborrat correctament.`);
-      } catch (err) {
-        const errorMessage = err.response?.data?.message || err.message || `Error en esborrar l'alumne ${studentId}.`;
-        setError(errorMessage);
-        console.error("Error deleting student:", err.response || err);
-        toast.error(`Error en esborrar l'alumne: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-      }
+  const openConfirmDeleteModal = (studentId, studentName) => {
+    setStudentToDelete({ id: studentId, name: studentName });
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    try {
+      setLoading(true);
+      await studentService.deleteStudent(studentToDelete.id); //
+      toast.success(`Alumne "${studentToDelete.name}" esborrat correctament.`);
+      await fetchStudents(); // Refresca la lista completa de alumnos
+      // El useEffect [searchTerm, allStudents] se encargará de actualizar filteredStudents
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || `Error en esborrar l'alumne ${studentToDelete.name}.`;
+      setError(errorMessage); // Muestra el error en la página si es relevante
+      console.error("Error deleting student:", err.response || err);
+      toast.error(`Error en esborrar l'alumne: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+      setIsConfirmModalOpen(false);
+      setStudentToDelete(null);
     }
   };
   
-  // Handler per tancar el formulari (cridat des de StudentForm)
   const handleCloseForm = () => {
     setIsFormVisible(false);
-    setEditingStudent(null); // Reseteja l'alumne en edició
-    setError(null); // Reseteja errors del formulari o de càrrega
+    setEditingStudent(null);
+    setError(null);
   };
 
-  // Handler per guardar (crear o actualitzar) un alumne (cridat des de StudentForm)
   const handleSaveStudent = async (studentData) => {
     setLoading(true);
+    setError(null); // Limpiar errores previos antes de guardar
     try {
-      if (editingStudent) { // Mode edició
-        await studentService.updateStudent(editingStudent.id, studentData);
-      } else { // Mode creació
-        await studentService.createStudent(studentData);
+      let studentNameForToast = studentData.name;
+      if (editingStudent) {
+        await studentService.updateStudent(editingStudent.id, studentData); //
+        studentNameForToast = editingStudent.name; // Usa el nombre original si se está editando (o el nuevo, como prefieras)
+        toast.success(`Alumne "${studentData.name}" actualitzat.`);
+      } else {
+        await studentService.createStudent(studentData); //
+        toast.success(`Alumne "${studentData.name}" creat.`);
       }
-      await fetchStudents(); // Refresca la llista
-      setIsFormVisible(false); // Tanca el formulari
-      setEditingStudent(null); // Reseteja l'alumne en edició
-      setError(null);
-    } catch (error) { // error pot ser un objecte amb error.message o un objecte d'error d'Axios
+      await fetchStudents();
+      setIsFormVisible(false);
+      setEditingStudent(null);
+    } catch (error) {
       const errorMessage = error.message || (error.error ? `${error.error}: ${error.details || ''}` : JSON.stringify(error));
       console.error("Error guardant l'alumne:", error);
-      setError(`Error guardant l'alumne: ${errorMessage}`); // Mostra l'error a la pàgina
+      setError(`Error guardant l'alumne: ${errorMessage}`);
+      toast.error(`Error guardant l'alumne: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Renderitzat condicional basat en l'estat de càrrega i error
-  if (loading && students.length === 0) { 
+  if (loading && allStudents.length === 0) { 
     return <div style={loadingErrorStyle}>Carregant alumnes...</div>;
   }
 
-  // Mostra un error principal si la càrrega inicial falla i no hi ha alumnes
-  if (error && students.length === 0 && !isFormVisible) {
+  if (error && allStudents.length === 0 && !isFormVisible) {
     return <div style={{ ...loadingErrorStyle, color: 'red' }}>Error: {error} <button onClick={fetchStudents}>Reintentar</button></div>;
   }
 
@@ -150,44 +187,66 @@ function StudentManagementPage() {
     <div style={pageStyle}>
       <h2>Gestió d'alumnes</h2>
       
-      {/* Mostra errors generals o de guardat si n'hi ha i el formulari no està obert o és un error no relacionat amb el formulari */}
       {error && !isFormVisible && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}
       
       {!isFormVisible && (
-        <button style={buttonStyle} onClick={handleCreateNew}>
-          + Crear nou alumne
-        </button>
+        <>
+          {/* NUEVO: Input de búsqueda */}
+          <input
+            type="text"
+            placeholder="Cercar alumne per nom..."
+            style={searchInputStyle}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <button style={buttonStyle} onClick={handleCreateNew}>
+            + Crear nou alumne
+          </button>
+        </>
       )}
 
       {isFormVisible && (
         <>
-          {/* Mostra l'error dins de la secció del formulari si està relacionat amb el guardat */}
-          {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}
+          {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error desant: {error}</p>}
           <StudentForm 
             studentToEdit={editingStudent}
             onSave={handleSaveStudent}
             onClose={handleCloseForm}
-            allStudents={students} // Per a les opcions de restriccions
+            allStudents={allStudents} 
           />
         </>
       )}
 
-      {/* Llista d'alumnes (només es mostra si el formulari no està visible) */}
       {!isFormVisible && (
-        students.length > 0 ? (
+        // Se pasa filteredStudents en lugar de allStudents
+        filteredStudents.length > 0 ? (
           <StudentList 
-            students={students} 
+            students={filteredStudents} 
             onEditStudent={handleEditStudent} 
-            onDeleteStudent={handleDeleteStudent} 
+            onDeleteStudent={(studentId) => { // Modificado para pasar nombre al modal
+                const student = allStudents.find(s => s.id === studentId);
+                if (student) {
+                    openConfirmDeleteModal(studentId, student.name);
+                }
+            }} 
           />
         ) : (
-          // Mostra aquest missatge si no hi ha alumnes i no s'està carregant ni hi ha error inicial
-          !loading && <div style={loadingErrorStyle}>No hi ha alumnes per mostrar. Comença creant-ne un!</div>
+          !loading && searchTerm && <div style={loadingErrorStyle}>No s'han trobat alumnes amb el nom "{searchTerm}".</div>
         )
       )}
+      {!isFormVisible && !loading && allStudents.length === 0 && !searchTerm && (
+         <div style={loadingErrorStyle}>No hi ha alumnes per mostrar. Comença creant-ne un!</div>
+      )}
       
-      {/* Indicador de càrrega subtil si ja hi ha dades però s'estan refrescant */}
-      {loading && students.length > 0 && <div style={{ ...loadingErrorStyle, fontSize: '0.9em', color: '#555' }}>Actualitzant dades...</div>}
+      {loading && allStudents.length > 0 && <div style={{ ...loadingErrorStyle, fontSize: '0.9em', color: '#555' }}>Actualitzant dades...</div>}
+
+      <ConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleDeleteStudent}
+        title="Confirmar Esborrat"
+        message={`Segur que vols esborrar l'alumne "${studentToDelete?.name}"? Aquesta acció no es pot desfer.`}
+      />
     </div>
   );
 }

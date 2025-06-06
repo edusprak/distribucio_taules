@@ -3,13 +3,10 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_BASE_URL ? `${process.env.REACT_APP_API_BASE_URL}/students` : 'http://localhost:3001/api/students';
 
-
-// Funció per obtenir tots els alumnes
 const getAllStudents = async () => {
   try {
     const response = await axios.get(API_URL);
-    // La resposta del backend ja no inclourà table_id directament a l'objecte alumne,
-    // només id, name, academic_grade, gender, restrictions
+    // Ara la resposta inclourà `preferences`
     return response.data;
   } catch (error) {
     console.error("Error fetching all students:", error.response || error);
@@ -17,11 +14,10 @@ const getAllStudents = async () => {
   }
 };
 
-// Funció per obtenir un alumne per ID
 const getStudentById = async (id) => {
   try {
     const response = await axios.get(`${API_URL}/${id}`);
-    // La resposta del backend ja no inclourà table_id
+    // Ara la resposta inclourà `preferences`
     return response.data;
   } catch (error) {
     console.error(`Error fetching student with id ${id}:`, error.response || error);
@@ -29,12 +25,10 @@ const getStudentById = async (id) => {
   }
 };
 
-// Funció per crear un nou alumne
-// studentData: { name, academic_grade, gender, restrictions: [] }
+// studentData ara pot incloure: { name, academic_grade, gender, id_classe_alumne, restrictions: [], preferences: [] }
 const createStudent = async (studentData) => {
   try {
-    // Assegura't que no s'envia table_id
-    const { table_id, ...dataToSend } = studentData;
+    const { table_id, ...dataToSend } = studentData; // table_id no és part del model Student
     const response = await axios.post(API_URL, dataToSend);
     return response.data;
   } catch (error) {
@@ -43,12 +37,10 @@ const createStudent = async (studentData) => {
   }
 };
 
-// Funció per actualitzar un alumne
-// studentData: pot contenir { name, academic_grade, gender, restrictions }
+// studentData ara pot incloure: { name, academic_grade, gender, id_classe_alumne, restrictions: [], preferences: [] }
 const updateStudent = async (id, studentData) => {
   try {
-    // Assegura't que no s'envia table_id
-    const { table_id, ...dataToSend } = studentData;
+    const { table_id, ...dataToSend } = studentData; // table_id no és part del model Student
     const response = await axios.put(`${API_URL}/${id}`, dataToSend);
     return response.data;
   } catch (error) {
@@ -57,7 +49,6 @@ const updateStudent = async (id, studentData) => {
   }
 };
 
-// Funció per esborrar un alumne (es manté igual)
 const deleteStudent = async (id) => {
   try {
     const response = await axios.delete(`${API_URL}/${id}`);

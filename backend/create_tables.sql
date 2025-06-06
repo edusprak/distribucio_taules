@@ -1,4 +1,7 @@
+-- backend/create_tables.sql
+
 -- Eliminar taules existents en l'ordre correcte per evitar problemes de FK
+DROP TABLE IF EXISTS student_preferences CASCADE; -- AFEGIT
 DROP TABLE IF EXISTS distribucio_classes_filter CASCADE;
 DROP TABLE IF EXISTS distribucio_assignacions CASCADE;
 DROP TABLE IF EXISTS distribucions CASCADE;
@@ -37,13 +40,13 @@ CREATE TABLE students (
     name VARCHAR(255) NOT NULL,
     academic_grade NUMERIC(4, 2) CHECK (academic_grade >= 0 AND academic_grade <= 10),
     gender VARCHAR(50),
-    id_classe_alumne INT, -- MODIFICAT: Ara és una FK a la taula 'classes'
+    id_classe_alumne INT, 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_student_classe
         FOREIGN KEY(id_classe_alumne)
         REFERENCES classes(id_classe)
-        ON DELETE SET NULL -- Si s'esborra una classe, els alumnes d'aquella classe passen a tenir id_classe_alumne = NULL
+        ON DELETE SET NULL 
 );
 
 -- Trigger per actualitzar 'updated_at' a 'students'
@@ -65,15 +68,31 @@ CREATE TABLE student_restrictions (
     student_id_1 INT NOT NULL,
     student_id_2 INT NOT NULL,
     PRIMARY KEY (student_id_1, student_id_2),
-    CONSTRAINT fk_student1
+    CONSTRAINT fk_student1_restriction
         FOREIGN KEY(student_id_1)
         REFERENCES students(id)
         ON DELETE CASCADE,
-    CONSTRAINT fk_student2
+    CONSTRAINT fk_student2_restriction
         FOREIGN KEY(student_id_2)
         REFERENCES students(id)
         ON DELETE CASCADE,
-    CONSTRAINT check_different_students CHECK (student_id_1 < student_id_2)
+    CONSTRAINT check_different_students_restriction CHECK (student_id_1 < student_id_2)
+);
+
+-- NOVA TAULA: Taula de Preferències entre Alumnes (student_preferences)
+CREATE TABLE student_preferences (
+    student_id_1 INT NOT NULL,
+    student_id_2 INT NOT NULL,
+    PRIMARY KEY (student_id_1, student_id_2),
+    CONSTRAINT fk_student1_preference
+        FOREIGN KEY(student_id_1)
+        REFERENCES students(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_student2_preference
+        FOREIGN KEY(student_id_2)
+        REFERENCES students(id)
+        ON DELETE CASCADE,
+    CONSTRAINT check_different_students_preference CHECK (student_id_1 < student_id_2)
 );
 
 -- Taula de Plantilles d'Aula (aula_plantilles)
@@ -154,7 +173,7 @@ CREATE TABLE distribucio_classes_filter (
     CONSTRAINT fk_filter_classe
         FOREIGN KEY(id_classe)
         REFERENCES classes(id_classe)
-        ON DELETE CASCADE, -- Si s'esborra la classe, aquesta entrada de filtre s'elimina
+        ON DELETE CASCADE, 
     CONSTRAINT uq_distribucio_classe_filter
         UNIQUE (distribucio_id, id_classe)
 );
@@ -193,3 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_distribucio_assignacions_alumne_id ON distribucio
 CREATE INDEX IF NOT EXISTS idx_distribucio_assignacions_taula_plantilla_id ON distribucio_assignacions(taula_plantilla_id);
 CREATE INDEX IF NOT EXISTS idx_distribucio_classes_filter_distribucio_id ON distribucio_classes_filter(distribucio_id);
 CREATE INDEX IF NOT EXISTS idx_distribucio_classes_filter_id_classe ON distribucio_classes_filter(id_classe);
+
+-- AFEGITS ÍNDEXS PER A student_preferences
+CREATE INDEX IF NOT EXISTS idx_student_preferences_student_id_1 ON student_preferences(student_id_1);
+CREATE INDEX IF NOT EXISTS idx_student_preferences_student_id_2 ON student_preferences(student_id_2);
