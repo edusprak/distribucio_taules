@@ -46,12 +46,28 @@ function StudentListItem({ student, onEdit, onDelete }) {
                        ? parseFloat(student.academic_grade).toFixed(2) 
                        : 'N/A';
 
+  // Funció per convertir el valor de gènere a la seva etiqueta en català
+  const getGenderLabel = (genderValue) => {
+    switch (genderValue) {
+      case 'male':
+        return 'Masculí';
+      case 'female':
+        return 'Femení';
+      case 'other':
+        return 'Altre';
+      case 'prefer_not_to_say':
+        return 'Prefereixo no dir-ho';
+      default:
+        return 'No especificat';
+    }
+  };
+
   return (
     <div style={itemStyle}>
       <div style={studentInfoStyle}>
         <h4>{student.name}</h4>
         <p>Nota: {displayGrade}</p>
-        <p>Gènere: {student.gender || 'No especificat'}</p>
+        <p>Gènere: {getGenderLabel(student.gender)}</p>
         {student.table_id && <p>Assignat a Taula ID: {student.table_id}</p>}
         {student.restrictions && student.restrictions.length > 0 && (
           <p>Restriccions amb IDs: {student.restrictions.join(', ')}</p>
