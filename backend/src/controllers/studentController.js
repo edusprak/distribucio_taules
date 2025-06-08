@@ -356,10 +356,222 @@ const deleteStudent = async (req, res) => {
     }
 };
 
+// Función per importar alumnes desde un fitxer CSV o Excel
+const importStudentsFromFile = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No se ha proporcionado ningún archivo' });
+  }
+
+  const filePath = req.file.path;
+  const fileType = req.file.originalname.split('.').pop().toLowerCase();
+  const idClasse = req.body.id_classe_alumne ? parseInt(req.body.id_classe_alumne) : null;
+  let studentsData = [];
+  
+  try {
+    // Verificar si existe la clase si se proporciona ID
+    if (idClasse) {
+      const classCheck = await db.query('SELECT id_classe FROM classes WHERE id_classe = $1', [idClasse]);
+      if (classCheck.rows.length === 0) {
+        return res.status(400).json({ message: 'La clase seleccionada no existe' });
+      }
+    }
+
+    // Procesar CSV o Excel segons la extensió
+    if (fileType === 'csv') {
+      const { parse } = require('csv-parse');
+      const fs = require('fs');
+      
+      // Llegir i parsejar el fitxer CSV
+      const parser = parse({columns: true, delimiter: ',', trim: true});
+      const records = [];
+      
+      fs.createReadStream(filePath)
+        .pipe(parser)
+        .on('data', (record) => records.push(record))
+        .on('error', (err) => {
+          throw new Error(`Error parsing CSV: ${err.message}`);
+        })
+        .on('end', async () => {
+          try {
+            studentsData = mapRecordsToStudentData(records, idClasse);
+            const result = await processImportedStudents(studentsData);
+            return res.status(200).json(result);
+          } catch (error) {
+            console.error('Error processing CSV records:', error);
+            return res.status(500).json({ message: 'Error procesando los registros del CSV', error: error.message });
+          } finally {
+            // Eliminar el fitxer després de processar-lo
+            fs.unlink(filePath, (err) => {
+              if (err) console.error('Error deleting file:', err);
+            });
+          }
+        });
+    } else if (fileType === 'xlsx' || fileType === 'xls') {
+      const XLSX = require('xlsx');
+      const fs = require('fs');
+      
+      // Llegir el fitxer Excel
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0]; // Assumim que volem la primera fulla
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // Convertir a JSON
+      const records = XLSX.utils.sheet_to_json(worksheet);
+      
+      // Processar els registres
+      studentsData = mapRecordsToStudentData(records, idClasse);
+      const result = await processImportedStudents(studentsData);
+      
+      // Eliminar el fitxer després de processar-lo
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+      
+      return res.status(200).json(result);
+    } else {
+      // Eliminar el fitxer si no és un format suportat
+      require('fs').unlink(filePath, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+      
+      return res.status(400).json({ message: 'Formato de archivo no soportado. Use CSV o Excel (xlsx/xls).' });
+    }
+  } catch (error) {
+    console.error('Error importing students:', error);
+    // Asegurarse de eliminar el archivo en caso de error
+    require('fs').unlink(filePath, (err) => {
+      if (err) console.error('Error deleting file:', err);
+    });
+    
+    return res.status(500).json({ message: 'Error interno del servidor al importar alumnes', error: error.message });
+  }
+};
+
+// Funció auxiliar per mapear registres a dades d'estudiants
+const mapRecordsToStudentData = (records, idClasse) => {
+  return records.map(record => {
+    // Mapea els camps del fitxer a l'estructura de dades d'Estudiant
+    // Noms de camps esperats: nombre, nota, genero, restriccions, preferències
+    return {
+      name: record.nombre || record.name || '',
+      academic_grade: parseFloat(record.nota || record.academic_grade || record.grade || '0'),
+      gender: record.genero || record.gender || null,
+      id_classe_alumne: idClasse,
+      restrictionsNames: (record.restriccions || record.restrictions || '').toString().split(',').map(r => r.trim()).filter(r => r),
+      preferencesNames: (record.preferències || record.preferences || '').toString().split(',').map(p => p.trim()).filter(p => p)
+    };
+  });
+};
+
+// Funció auxiliar per processar i guardar els estudiants importats
+const processImportedStudents = async (studentsData) => {
+  let created = 0;
+  let errors = [];
+  
+  await db.pool.query('BEGIN');
+  try {
+    // Per a cada estudiant en les dades importades
+    for (const studentData of studentsData) {
+      if (!studentData.name) {
+        errors.push({ data: studentData, error: 'El nom és obligatori' });
+        continue;
+      }
+      
+      try {
+        // Inserir l'estudiant
+        const grade = parseFloat(studentData.academic_grade);
+        if (isNaN(grade) || grade < 0 || grade > 10) {
+          errors.push({ data: studentData, error: 'La nota acadèmica ha de ser un número entre 0 i 10' });
+          continue;
+        }
+        
+        const newStudentResult = await db.query(
+          'INSERT INTO students (name, academic_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4) RETURNING id',
+          [studentData.name, grade, studentData.gender, studentData.id_classe_alumne]
+        );
+        
+        const newStudentId = newStudentResult.rows[0].id;
+        
+        // Processar restriccions per nom (si existeixen)
+        if (studentData.restrictionsNames && studentData.restrictionsNames.length > 0) {
+          for (const restrictionName of studentData.restrictionsNames) {
+            if (!restrictionName) continue;
+            
+            // Buscar a l'estudiant per nom
+            const restrictedStudent = await db.query('SELECT id FROM students WHERE name = $1', [restrictionName]);
+            if (restrictedStudent.rows.length > 0) {
+              const restrictedId = restrictedStudent.rows[0].id;
+              const id1 = Math.min(newStudentId, restrictedId);
+              const id2 = Math.max(newStudentId, restrictedId);
+              
+              if (id1 === id2) continue; // No es pot tenir restricció consigo mateix
+              
+              try {
+                await db.query(
+                  'INSERT INTO student_restrictions (student_id_1, student_id_2) VALUES ($1, $2)',
+                  [id1, id2]
+                );
+              } catch (restrictionError) {
+                if (restrictionError.code !== '23505') { // Ignorar errors de duplicats
+                  throw restrictionError;
+                }
+              }
+            }
+          }
+        }
+        
+        // Processar preferències per nom (si existeixen)
+        if (studentData.preferencesNames && studentData.preferencesNames.length > 0) {
+          for (const preferenceName of studentData.preferencesNames) {
+            if (!preferenceName) continue;
+            
+            // Buscar a l'estudiant per nom
+            const preferredStudent = await db.query('SELECT id FROM students WHERE name = $1', [preferenceName]);
+            if (preferredStudent.rows.length > 0) {
+              const preferredId = preferredStudent.rows[0].id;
+              const id1 = Math.min(newStudentId, preferredId);
+              const id2 = Math.max(newStudentId, preferredId);
+              
+              if (id1 === id2) continue; // No es pot tenir preferència consigo mateix
+              
+              try {
+                await db.query(
+                  'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
+                  [id1, id2]
+                );
+              } catch (preferenceError) {
+                if (preferenceError.code !== '23505') { // Ignorar errors de duplicats
+                  throw preferenceError;
+                }
+              }
+            }
+          }
+        }
+        
+        created++;
+      } catch (err) {
+        errors.push({ data: studentData, error: err.message });
+      }
+    }
+    
+    await db.pool.query('COMMIT');
+    return { 
+      success: true, 
+      message: `S'han importat ${created} alumnes correctament.`,
+      created,
+      errors: errors.length > 0 ? errors : undefined
+    };
+  } catch (error) {
+    await db.pool.query('ROLLBACK');
+    throw error;
+  }
+};
+
 module.exports = {
   getAllStudents,
   getStudentById,
   createStudent,
   updateStudent,
   deleteStudent,
+  importStudentsFromFile
 };

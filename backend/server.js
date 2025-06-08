@@ -3,6 +3,8 @@
 // Importar els mòduls necessaris
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const db = require('./src/db');
@@ -15,6 +17,13 @@ const distribucioRoutes = require('./src/routes/distribucioRoutes');
 const assignmentRoutes = require('./src/routes/assignmentRoutes');
 
 const app = express();
+
+// Crear directorio para uploads si no existe
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Directorio de uploads creado:', uploadsDir);
+}
 
 app.use(cors());
 app.use(express.json());

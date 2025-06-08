@@ -37,6 +37,30 @@ const createStudent = async (studentData) => {
   }
 };
 
+// Nueva función para importar estudiantes desde archivo CSV o Excel
+const importStudentsFromFile = async (file, idClasse) => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Si se proporciona un ID de clase, incluirlo en la solicitud
+    if (idClasse) {
+      formData.append('id_classe_alumne', idClasse);
+    }
+    
+    const response = await axios.post(`${API_URL}/import`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error("Error importing students:", error.response || error);
+    throw error.response?.data || error;
+  }
+};
+
 // studentData ara pot incloure: { name, academic_grade, gender, id_classe_alumne, restrictions: [], preferences: [] }
 const updateStudent = async (id, studentData) => {
   try {
@@ -65,6 +89,7 @@ const studentService = {
   createStudent,
   updateStudent,
   deleteStudent,
+  importStudentsFromFile
 };
 
 export default studentService;

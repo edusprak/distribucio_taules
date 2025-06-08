@@ -7,6 +7,7 @@ import { styled } from '@mui/material/styles';
 import studentService from '../services/studentService';
 import StudentList from '../components/students/StudentList';
 import StudentForm from '../components/students/StudentForm';
+import StudentImport from '../components/students/StudentImport';
 import ConfirmModal from '../components/ConfirmModal';
 
 const MainContainer = styled(Box)(({ theme }) => ({
@@ -35,8 +36,8 @@ function StudentManagementPage() {
   const [filteredStudents, setFilteredStudents] = useState([]); // Lista de alumnos a mostrar (filtrada)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  const [isFormVisible, setIsFormVisible] = useState(false);
+    const [isFormVisible, setIsFormVisible] = useState(false);
+  const [isImportVisible, setIsImportVisible] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState(null);
@@ -125,10 +126,21 @@ function StudentManagementPage() {
       setStudentToDelete(null);
     }
   };
-  
-  const handleCloseForm = () => {
+    const handleCloseForm = () => {
     setIsFormVisible(false);
     setEditingStudent(null);
+    setError(null);
+  };
+
+  const handleOpenImport = () => {
+    setIsImportVisible(true);
+    setIsFormVisible(false);
+    setEditingStudent(null);
+    setError(null);
+  };
+
+  const handleCloseImport = () => {
+    setIsImportVisible(false);
     setError(null);
   };
 
@@ -187,8 +199,7 @@ function StudentManagementPage() {
           Gestió d'alumnes
         </Typography>
         <Divider sx={{ mb: 2 }} />
-        {error && !isFormVisible && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}
-        {!isFormVisible && (
+        {error && !isFormVisible && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}        {!isFormVisible && !isImportVisible && (
           <Box display="flex" flexDirection="column" gap={2}>
             <TextField
               size="small"
@@ -197,12 +208,16 @@ function StudentManagementPage() {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
-            <Button variant="contained" color="success" onClick={handleCreateNew} sx={{ alignSelf: 'flex-end' }}>
-              + Crear nou alumne
-            </Button>
+            <Box display="flex" justifyContent="flex-end" gap={1}>
+              <Button variant="outlined" color="primary" onClick={handleOpenImport}>
+                Importar alumnes
+              </Button>
+              <Button variant="contained" color="success" onClick={handleCreateNew}>
+                + Crear nou alumne
+              </Button>
+            </Box>
           </Box>
-        )}
-        {isFormVisible && (
+        )}        {isFormVisible && (
           <Box>
             {error && <Alert severity="error" sx={{ mb: 2 }}>Error desant: {error}</Alert>}
             <StudentForm
@@ -213,7 +228,15 @@ function StudentManagementPage() {
             />
           </Box>
         )}
-        {!isFormVisible && (
+        
+        {isImportVisible && (
+          <Box>
+            <StudentImport
+              onClose={handleCloseImport}
+              onImportSuccess={fetchStudents}
+            />
+          </Box>
+        )}        {!isFormVisible && !isImportVisible && (
           filteredStudents.length > 0 ? (
             <StudentList
               students={filteredStudents}
@@ -229,7 +252,7 @@ function StudentManagementPage() {
             !loading && searchTerm && <Alert severity="info">No s'han trobat alumnes amb el nom "{searchTerm}".</Alert>
           )
         )}
-        {!isFormVisible && !loading && allStudents.length === 0 && !searchTerm && (
+        {!isFormVisible && !isImportVisible && !loading && allStudents.length === 0 && !searchTerm && (
           <Alert severity="info">No hi ha alumnes per mostrar. Comença creant-ne un!</Alert>
         )}
         {loading && allStudents.length > 0 && (
