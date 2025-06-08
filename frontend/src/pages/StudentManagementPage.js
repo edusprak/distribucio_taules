@@ -1,47 +1,34 @@
 // frontend/src/pages/StudentManagementPage.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
+import { Box, Paper, Typography, Button, TextField, Divider, CircularProgress, Alert } from '@mui/material';
+import { styled } from '@mui/material/styles';
 
 import studentService from '../services/studentService';
 import StudentList from '../components/students/StudentList';
 import StudentForm from '../components/students/StudentForm';
 import ConfirmModal from '../components/ConfirmModal';
 
-// Estilos
-const pageStyle = {
-    maxWidth: '800px',
-    margin: '0 auto',
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-};
+const MainContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'flex-start',
+  minHeight: 'calc(100vh - 64px)',
+  background: theme.palette.background.default,
+  padding: theme.spacing(3),
+}));
 
-const buttonStyle = {
-    padding: '10px 15px',
-    fontSize: '1em',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    marginBottom: '20px',
-};
-
-// NUEVO: Estilo para el input de búsqueda
-const searchInputStyle = {
-    padding: '10px',
-    fontSize: '1em',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    marginBottom: '20px',
-    width: 'calc(100% - 22px)', // Ocupa todo el ancho menos el padding y borde
-    boxSizing: 'border-box',
-};
-
-const loadingErrorStyle = {
-    textAlign: 'center',
-    padding: '20px',
-    fontSize: '1.1em',
-};
+const ContentPaper = styled(Paper)(({ theme }) => ({
+  width: '100%',
+  maxWidth: 600,
+  padding: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[2],
+  background: theme.palette.background.paper,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(2),
+}));
 
 function StudentManagementPage() {
   const [allStudents, setAllStudents] = useState([]); // Lista original de todos los alumnos
@@ -62,15 +49,12 @@ function StudentManagementPage() {
       setLoading(true);
       const data = await studentService.getAllStudents();
       setAllStudents(data);
-      // Inicialmente no filtramos, el useEffect de abajo lo hará
-      // setFilteredStudents(data); 
       setError(null);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || 'Error en carregar els alumnes.';
       setError(errorMessage);
       console.error("Error fetching students:", err);
       setAllStudents([]);
-      // setFilteredStudents([]);
     } finally {
       setLoading(false);
     }
@@ -130,7 +114,6 @@ function StudentManagementPage() {
       await studentService.deleteStudent(studentToDelete.id); //
       toast.success(`Alumne "${studentToDelete.name}" esborrat correctament.`);
       await fetchStudents(); // Refresca la lista completa de alumnos
-      // El useEffect [searchTerm, allStudents] se encargará de actualizar filteredStudents
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || `Error en esborrar l'alumne ${studentToDelete.name}.`;
       setError(errorMessage); // Muestra el error en la página si es relevante
@@ -153,10 +136,8 @@ function StudentManagementPage() {
     setLoading(true);
     setError(null); // Limpiar errores previos antes de guardar
     try {
-      let studentNameForToast = studentData.name;
       if (editingStudent) {
         await studentService.updateStudent(editingStudent.id, studentData); //
-        studentNameForToast = editingStudent.name; // Usa el nombre original si se está editando (o el nuevo, como prefieras)
         toast.success(`Alumne "${studentData.name}" actualitzat.`);
       } else {
         await studentService.createStudent(studentData); //
@@ -175,79 +156,97 @@ function StudentManagementPage() {
     }
   };
 
-  if (loading && allStudents.length === 0) { 
-    return <div style={loadingErrorStyle}>Carregant alumnes...</div>;
+  if (loading && allStudents.length === 0) {
+    return (
+      <MainContainer>
+        <ContentPaper>
+          <Box display="flex" alignItems="center" justifyContent="center" minHeight={200}>
+            <CircularProgress />
+            <Typography variant="body1" sx={{ ml: 2 }}>Carregant alumnes...</Typography>
+          </Box>
+        </ContentPaper>
+      </MainContainer>
+    );
   }
 
   if (error && allStudents.length === 0 && !isFormVisible) {
-    return <div style={{ ...loadingErrorStyle, color: 'red' }}>Error: {error} <button onClick={fetchStudents}>Reintentar</button></div>;
+    return (
+      <MainContainer>
+        <ContentPaper>
+          <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>
+          <Button variant="contained" color="primary" onClick={fetchStudents}>Reintentar</Button>
+        </ContentPaper>
+      </MainContainer>
+    );
   }
 
   return (
-    <div style={pageStyle}>
-      <h2>Gestió d'alumnes</h2>
-      
-      {error && !isFormVisible && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}
-      
-      {!isFormVisible && (
-        <>
-          {/* NUEVO: Input de búsqueda */}
-          <input
-            type="text"
-            placeholder="Cercar alumne per nom..."
-            style={searchInputStyle}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <button style={buttonStyle} onClick={handleCreateNew}>
-            + Crear nou alumne
-          </button>
-        </>
-      )}
-
-      {isFormVisible && (
-        <>
-          {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error desant: {error}</p>}
-          <StudentForm 
-            studentToEdit={editingStudent}
-            onSave={handleSaveStudent}
-            onClose={handleCloseForm}
-            allStudents={allStudents} 
-          />
-        </>
-      )}
-
-      {!isFormVisible && (
-        // Se pasa filteredStudents en lugar de allStudents
-        filteredStudents.length > 0 ? (
-          <StudentList 
-            students={filteredStudents} 
-            onEditStudent={handleEditStudent} 
-            onDeleteStudent={(studentId) => { // Modificado para pasar nombre al modal
+    <MainContainer>
+      <ContentPaper>
+        <Typography variant="h5" color="primary" fontWeight={700} align="center" mb={1}>
+          Gestió d'alumnes
+        </Typography>
+        <Divider sx={{ mb: 2 }} />
+        {error && !isFormVisible && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}
+        {!isFormVisible && (
+          <Box display="flex" flexDirection="column" gap={2}>
+            <TextField
+              size="small"
+              fullWidth
+              label="Cercar alumne per nom..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+            <Button variant="contained" color="success" onClick={handleCreateNew} sx={{ alignSelf: 'flex-end' }}>
+              + Crear nou alumne
+            </Button>
+          </Box>
+        )}
+        {isFormVisible && (
+          <Box>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>Error desant: {error}</Alert>}
+            <StudentForm
+              studentToEdit={editingStudent}
+              onSave={handleSaveStudent}
+              onClose={handleCloseForm}
+              allStudents={allStudents}
+            />
+          </Box>
+        )}
+        {!isFormVisible && (
+          filteredStudents.length > 0 ? (
+            <StudentList
+              students={filteredStudents}
+              onEditStudent={handleEditStudent}
+              onDeleteStudent={studentId => {
                 const student = allStudents.find(s => s.id === studentId);
                 if (student) {
-                    openConfirmDeleteModal(studentId, student.name);
+                  openConfirmDeleteModal(studentId, student.name);
                 }
-            }} 
-          />
-        ) : (
-          !loading && searchTerm && <div style={loadingErrorStyle}>No s'han trobat alumnes amb el nom "{searchTerm}".</div>
-        )
-      )}
-      {!isFormVisible && !loading && allStudents.length === 0 && !searchTerm && (
-         <div style={loadingErrorStyle}>No hi ha alumnes per mostrar. Comença creant-ne un!</div>
-      )}
-      
-      {loading && allStudents.length > 0 && <div style={{ ...loadingErrorStyle, fontSize: '0.9em', color: '#555' }}>Actualitzant dades...</div>}
-
-      <ConfirmModal
-        isOpen={isConfirmModalOpen}
-        onClose={() => setIsConfirmModalOpen(false)}
-        onConfirm={handleDeleteStudent}
-        title="Confirmar Esborrat"
-        message={`Segur que vols esborrar l'alumne "${studentToDelete?.name}"? Aquesta acció no es pot desfer.`}
-      />
-    </div>
+              }}
+            />
+          ) : (
+            !loading && searchTerm && <Alert severity="info">No s'han trobat alumnes amb el nom "{searchTerm}".</Alert>
+          )
+        )}
+        {!isFormVisible && !loading && allStudents.length === 0 && !searchTerm && (
+          <Alert severity="info">No hi ha alumnes per mostrar. Comença creant-ne un!</Alert>
+        )}
+        {loading && allStudents.length > 0 && (
+          <Box display="flex" alignItems="center" justifyContent="center" minHeight={60}>
+            <CircularProgress size={20} sx={{ mr: 2 }} />
+            <Typography variant="body2" color="text.secondary">Actualitzant dades...</Typography>
+          </Box>
+        )}
+        <ConfirmModal
+          isOpen={isConfirmModalOpen}
+          onClose={() => setIsConfirmModalOpen(false)}
+          onConfirm={handleDeleteStudent}
+          title="Confirmar Esborrat"
+          message={`Segur que vols esborrar l'alumne "${studentToDelete?.name}"? Aquesta acció no es pot desfer.`}
+        />
+      </ContentPaper>
+    </MainContainer>
   );
 }
 

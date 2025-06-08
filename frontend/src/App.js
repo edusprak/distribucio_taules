@@ -5,16 +5,20 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 
 import './App.css';
 import StudentManagementPage from './pages/StudentManagementPage';
 import ClassManagementPage from './pages/ClassManagementPage'; // NOVA PÀGINA
 import PlantillaAulaManagementPage from './pages/PlantillaAulaManagementPage';
 import ClassroomArrangementPage from './pages/ClassroomArrangementPage';
+import theme from './assets/theme';
 
 function App() {
   return (
-    <DndProvider backend={HTML5Backend}>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <DndProvider backend={HTML5Backend}>
         <Router>
           <div className="App">
             <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'center', gap: '15px' }}>
@@ -37,7 +41,8 @@ function App() {
             <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />
           </div>
         </Router>
-    </DndProvider>
+      </DndProvider>
+    </ThemeProvider>
   );
 }
 

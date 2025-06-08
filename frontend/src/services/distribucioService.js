@@ -43,7 +43,7 @@ const response = await axios.get(`${API_URL}/${id_distribucio}`);
 // Esborrar una distribució
 const deleteDistribucio = async (id_distribucio) => {
   try {
-    const response = await axios.delete(`${API_URL}/</span>{id_distribucio}`);
+    const response = await axios.delete(`${API_URL}/${id_distribucio}`);
     return response.data; // Esperem { success: true, message: "..." }
   } catch (error) {
     console.error(`Error deleting distribucio ${id_distribucio}:`, error.response || error);

@@ -5,11 +5,29 @@ import plantillaAulaService from '../services/plantillaAulaService';
 import PlantillaAulaList from '../components/plantilles_aula/PlantillaAulaList'; // Nou component
 import PlantillaAulaForm from '../components/plantilles_aula/PlantillaAulaForm'; // Nou component
 import ConfirmModal from '../components/ConfirmModal'; // Component existent
+import { Box, Paper, Typography, Button, Divider, CircularProgress, Alert } from '@mui/material';
+import { styled } from '@mui/material/styles';
 
-// Estils similars a altres pàgines de gestió
-const pageStyle = { maxWidth: '900px', margin: '0 auto', padding: '20px', fontFamily: 'Arial, sans-serif' };
-const buttonStyle = { padding: '10px 15px', fontSize: '1em', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginBottom: '20px' };
-const loadingErrorStyle = { textAlign: 'center', padding: '20px', fontSize: '1.1em' };
+const MainContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'flex-start',
+  minHeight: 'calc(100vh - 64px)',
+  background: theme.palette.background.default,
+  padding: theme.spacing(3),
+}));
+
+const ContentPaper = styled(Paper)(({ theme }) => ({
+  width: '100%',
+  maxWidth: 700,
+  padding: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[2],
+  background: theme.palette.background.paper,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(2),
+}));
 
 function PlantillaAulaManagementPage() {
     const [plantilles, setPlantilles] = useState([]);
@@ -106,46 +124,55 @@ function PlantillaAulaManagementPage() {
 
 
     if (loading && plantilles.length === 0) {
-        return <div style={loadingErrorStyle}>Carregant plantilles...</div>;
+        return (
+          <MainContainer>
+            <ContentPaper>
+              <Box display="flex" alignItems="center" justifyContent="center" minHeight={200}>
+                <CircularProgress />
+                <Typography variant="body1" sx={{ ml: 2 }}>Carregant plantilles...</Typography>
+              </Box>
+            </ContentPaper>
+          </MainContainer>
+        );
     }
-
     return (
-        <div style={pageStyle}>
-            <h2>Gestió de plantilles</h2>
-
-            {error && !isFormVisible && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}
-
+        <MainContainer>
+          <ContentPaper>
+            <Typography variant="h5" color="primary" fontWeight={700} align="center" mb={1}>
+              Gestió de plantilles
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            {error && !isFormVisible && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}
             {!isFormVisible && (
-                <button style={buttonStyle} onClick={handleCreateNewPlantilla}>
+                <Button variant="contained" color="success" sx={{ mb: 2, alignSelf: 'flex-end' }} onClick={handleCreateNewPlantilla}>
                     + Crear nova plantilla
-                </button>
+                </Button>
             )}
-
             {isFormVisible && (
-                <>
-                    {error && <p style={{ color: 'red', border: '1px solid red', padding: '10px', marginBottom: '10px' }}>Error: {error}</p>}
+                <Box>
+                    {error && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}
                     <PlantillaAulaForm
                         onSave={handleSavePlantilla}
                         onClose={handleCloseForm}
-                        // Passar alumnes no és necessari aquí, ja que les plantilles no tenen alumnes
                     />
-                </>
+                </Box>
             )}
-
             {!isFormVisible && (
                 plantilles.length > 0 ? (
                     <PlantillaAulaList
                         plantilles={plantilles}
                         onDeletePlantilla={openConfirmDeleteModal}
-                        // No hi ha onEditPlantilla ja que són immutables
                     />
                 ) : (
-                    !loading && <div style={loadingErrorStyle}>No hi ha plantilles d'aula. Comença creant-ne una!</div>
+                    !loading && <Alert severity="info">No hi ha plantilles d'aula. Comença creant-ne una!</Alert>
                 )
             )}
-
-            {loading && plantilles.length > 0 && <div style={{ ...loadingErrorStyle, fontSize: '0.9em', color: '#555' }}>Actualitzant dades...</div>}
-
+            {loading && plantilles.length > 0 && (
+              <Box display="flex" alignItems="center" justifyContent="center" minHeight={60}>
+                <CircularProgress size={20} sx={{ mr: 2 }} />
+                <Typography variant="body2" color="text.secondary">Actualitzant dades...</Typography>
+              </Box>
+            )}
             <ConfirmModal
                 isOpen={isConfirmModalOpen}
                 onClose={() => setIsConfirmModalOpen(false)}
@@ -153,7 +180,8 @@ function PlantillaAulaManagementPage() {
                 title="Confirmar Esborrat"
                 message={`Segur que vols esborrar la plantilla "${plantillaToDelete?.nom_plantilla}"? Totes les distribucions associades també s'esborraran.`}
             />
-        </div>
+          </ContentPaper>
+        </MainContainer>
     );
 }
 

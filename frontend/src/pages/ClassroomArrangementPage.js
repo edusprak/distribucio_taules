@@ -13,21 +13,69 @@ import StudentPoolDropZone from '../components/students/StudentPoolDropZone';
 import ConfirmModal from '../components/ConfirmModal';
 import axios from 'axios';
 import Select from 'react-select'; // Per al selector de classes
+import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert } from '@mui/material';
+import { styled } from '@mui/material/styles';
 
-// Estils (es mantenen)
-const labelStyle = { display: 'block', marginBottom: '5px', fontWeight: 'bold' };
-const pageStyle = { display: 'flex', flexDirection: 'column', gap: '20px', padding: '20px', fontFamily: 'Arial, sans-serif', alignItems: 'stretch' };
-const contentWrapperStyle = { display: 'flex', gap: '20px', flexGrow: 1 };
-const poolStyle = { width: '300px', border: '1px solid #ccc', borderRadius: '8px', padding: '0px', backgroundColor: '#f9f9f9', maxHeight: 'calc(80vh - 120px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' };
-const tablesAreaStyle = { flexGrow: 1, border: '1px solid #ccc', borderRadius: '8px', padding: '15px', backgroundColor: '#e9e9e9', display: 'flex', flexWrap: 'wrap', gap: '20px', alignContent: 'flex-start', maxHeight: 'calc(80vh - 120px)', overflowY: 'auto' };
-const loadingErrorStyle = { textAlign: 'center', padding: '20px', fontSize: '1.1em', width: '100%' };
-const controlSectionBaseStyle = { padding: '15px', border: '1px solid #ccc', borderRadius: '8px', marginBottom: '10px' };
-const selectionSectionStyle = { ...controlSectionBaseStyle, borderColor: '#007bff', backgroundColor: '#f0f7ff', display: 'flex', flexDirection: 'column', gap: '10px' };
-const inputStyle = { display: 'block', width: 'calc(100% - 22px)', padding: '8px 10px', marginBottom: '10px', border: '1px solid #ced4da', borderRadius: '4px', boxSizing: 'border-box' };
-const buttonStyle = { padding: '8px 15px', fontSize: '0.9em', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '10px', minWidth: '80px'};
-const classFilterSectionStyle = { ...controlSectionBaseStyle, borderColor: '#28a745', backgroundColor: '#f0fff0', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '10px'};
-const selectStyles = { control: base => ({ ...base, ...inputStyle, padding:0, marginBottom:0, height: 'auto' }), input: base => ({ ...base, margin: '0px'}), valueContainer: base => ({ ...base, padding: '0 8px'})};
+// Layout principal: dues columnes, esquerra (controls) i dreta (drag&drop)
+const MainLayout = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'row',
+  height: 'calc(100vh - 64px)', // 64px per la navbar
+  gap: theme.spacing(2),
+  background: theme.palette.background.default,
+}));
 
+const Sidebar = styled(Paper)(({ theme }) => ({
+  width: 340,
+  minWidth: 300,
+  maxWidth: 360,
+  padding: theme.spacing(2),
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(2),
+  background: theme.palette.background.paper,
+  boxShadow: theme.shadows[2],
+  borderRadius: theme.shape.borderRadius,
+  height: '100%',
+  overflowY: 'auto',
+}));
+
+const DragDropArea = styled(Box)(({ theme }) => ({
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'row',
+  gap: theme.spacing(2),
+  height: '100%',
+  minWidth: 0,
+}));
+
+const PoolZone = styled(Paper)(({ theme }) => ({
+  width: 280,
+  minWidth: 220,
+  maxWidth: 320,
+  padding: theme.spacing(1),
+  background: theme.palette.background.paper,
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[1],
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  overflowY: 'auto',
+}));
+
+const TablesZone = styled(Box)(({ theme }) => ({
+  flex: 1,
+  background: theme.palette.background.paper,
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[1],
+  padding: theme.spacing(2),
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: theme.spacing(2),
+  alignContent: 'flex-start',
+  height: '100%',
+  overflowY: 'auto',
+}));
 
 function ClassroomArrangementPageContent() {
     const [allStudents, setAllStudents] = useState([]);
@@ -52,8 +100,6 @@ function ClassroomArrangementPageContent() {
     const [error, setError] = useState({ global: null, plantilla: null, distribucio: null, autoAssign: null, classes: null });
     
     const [isProcessingAutoAssign, setIsProcessingAutoAssign] = useState(false);
-    const [proposedAssignments, setProposedAssignments] = useState([]);
-    const [isApplyingProposal, setIsApplyingProposal] = useState(false);
     const [balanceByGender, setBalanceByGender] = useState(false);
     
     const [isConfirmDeleteDistribucioOpen, setIsConfirmDeleteDistribucioOpen] = useState(false);
@@ -352,7 +398,6 @@ function ClassroomArrangementPageContent() {
         setDisplayedStudents(prevStudents => 
             prevStudents.map(s => ({ ...s, taula_plantilla_id: null }))
         );
-        setProposedAssignments([]);
         toast.info("Totes les assignacions actuals netejades (dels alumnes mostrats).");
     };
 
@@ -361,14 +406,14 @@ function ClassroomArrangementPageContent() {
             toast.error("Selecciona una plantilla d'aula abans d'assignar automàticament.");
             return;
         }
-        // unassignedStudents ja està filtrat per classe si selectedFilterClasses té valor
         if (unassignedStudents.length === 0) {
             toast.info("No hi ha alumnes no assignats (del filtre de classe actual) per a l'assignació automàtica.");
             return;
         }
         setIsProcessingAutoAssign(true);
         setError(prev => ({ ...prev, autoAssign: null }));
-        setProposedAssignments([]);
+        // Elimino estats ja no usats per l'autoassignació directa
+        // setProposedAssignments([]);
 
         const studentsForAutoAssignPayload = unassignedStudents.map(s => ({
             id: s.id,
@@ -376,9 +421,9 @@ function ClassroomArrangementPageContent() {
             academic_grade: s.academic_grade,
             gender: s.gender,
             restrictions: s.restrictions,
+            preferences: s.preferences, // <-- AFEGIT
             current_table_id: null
         }));
-        
         const alreadyAssignedStudentsPayload = displayedStudents
             .filter(s => s.taula_plantilla_id !== null)
             .map(s => ({
@@ -387,9 +432,9 @@ function ClassroomArrangementPageContent() {
                 academic_grade: s.academic_grade,
                 gender: s.gender,
                 restrictions: s.restrictions,
+                preferences: s.preferences, // <-- AFEGIT
                 current_table_id: s.taula_plantilla_id 
             }));
-        
         const payloadStudents = [...alreadyAssignedStudentsPayload, ...studentsForAutoAssignPayload];
 
         try {
@@ -400,11 +445,24 @@ function ClassroomArrangementPageContent() {
             };
             const response = await axios.post(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001/api'}/assignments/auto-assign`, payload);
             if (response.data.success) {
-                setProposedAssignments(response.data.proposedAssignments || []);
-                if (!response.data.proposedAssignments || response.data.proposedAssignments.length === 0) {
+                const assignments = response.data.proposedAssignments || [];
+                const warnings = response.data.warnings || [];
+                if (assignments.length === 0) {
                     toast.warn("L'algorisme no ha generat noves assignacions per als alumnes del pool.");
                 } else {
-                    toast.info(`L'algorisme proposa ${response.data.proposedAssignments.length} noves assignacions.`);
+                    // Aplica directament les assignacions proposades
+                    let currentDisplayedStudents = [...displayedStudents];
+                    assignments.forEach(proposal => {
+                        currentDisplayedStudents = currentDisplayedStudents.map(s =>
+                            s.id === proposal.studentId ? { ...s, taula_plantilla_id: proposal.tableId } : s
+                        );
+                    });
+                    setDisplayedStudents(currentDisplayedStudents);
+                    toast.success(`${assignments.length} assignacions automàtiques aplicades directament. Desa la distribució per persistir els canvis.`);
+                    // Mostra avisos de preferències/restriccions si n'hi ha
+                    if (warnings.length > 0) {
+                        warnings.forEach(w => toast.info(w));
+                    }
                 }
             } else {
                 throw new Error(response.data.message || "Error en l'auto-assignació des del backend.");
@@ -418,34 +476,12 @@ function ClassroomArrangementPageContent() {
         }
     };
 
-    const applyProposedAssignments = () => {
-        if (proposedAssignments.length === 0) return;
-        setIsApplyingProposal(true);
-        
-        let currentDisplayedStudents = [...displayedStudents];
-        proposedAssignments.forEach(proposal => {
-            currentDisplayedStudents = currentDisplayedStudents.map(s =>
-                s.id === proposal.studentId ? { ...s, taula_plantilla_id: proposal.tableId } : s
-            );
-        });
-        setDisplayedStudents(currentDisplayedStudents);
-
-        toast.success(`${proposedAssignments.length} assignacions proposades aplicades localment. Desa la distribució per persistir els canvis.`);
-        setProposedAssignments([]);
-        setIsApplyingProposal(false);
-    };
-
-     const discardProposedAssignments = () => {
-        setProposedAssignments([]);
-        setError(prev => ({ ...prev, autoAssign: null }));
-        toast.info("Propostes descartades.");
-    };
-
+    // Render
     if (loading.global && !activePlantilla && !loading.classes) {
-        return <div style={loadingErrorStyle}>Carregant dades inicials...</div>;
+        return <Box display="flex" alignItems="center" justifyContent="center" height="80vh"><CircularProgress /></Box>;
     }
     if (loading.classes) {
-        return <div style={loadingErrorStyle}>Carregant llista de classes...</div>;
+        return <Box display="flex" alignItems="center" justifyContent="center" height="80vh"><CircularProgress /></Box>;
     }
     
     const unassignedStudents = displayedStudents.filter(s => s.taula_plantilla_id === null);
@@ -457,224 +493,213 @@ function ClassroomArrangementPageContent() {
         : [];
 
     return (
-        <div style={pageStyle}>
-            <h2 style={{ textAlign: 'center', marginBottom: '20px', width: '100%' }}>Distribució d'alumnes a una plantilla</h2>
-
-            <div style={selectionSectionStyle}>
-                <h3 style={{ marginTop: 0, marginBottom: '10px' }}>1. Selecciona plantilla i distribució</h3>
-                {error.plantilla && <p style={{color: 'red'}}>Error plantilla: {error.plantilla}</p>}
-                
-                <label htmlFor="plantillaSelector" style={labelStyle}>Plantilla:</label>
-                <select
-                    id="plantillaSelector"
-                    style={inputStyle}
-                    value={selectedPlantillaId}
-                    onChange={(e) => setSelectedPlantillaId(e.target.value)}
-                    disabled={loading.plantilles || loading.global}
-                >
-                    <option value="">-- Selecciona una Plantilla --</option>
-                    {plantillesAula.map(p => (
-                        <option key={p.id_plantilla} value={p.id_plantilla}>
-                            {p.nom_plantilla} (Creada: {new Date(p.created_at).toLocaleDateString()})
-                        </option>
-                    ))}
-                </select>
-                {loading.plantilles && <p>Carregant plantilles...</p>}
-
-                {activePlantilla && (
-                    <>
-                        <label htmlFor="distribucioSelector" style={labelStyle}>Distribució desada (per "{activePlantilla.nom_plantilla}"):</label>
-                        <div style={{display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px'}}>
-                            <select
-                                id="distribucioSelector"
-                                style={{...inputStyle, marginBottom: '0', flexGrow: 1}}
-                                value={selectedDistribucioId}
-                                onChange={(e) => setSelectedDistribucioId(e.target.value)}
-                                disabled={loading.distribucions || distribucionsDesades.length === 0}
-                            >
-                                <option value="">-- Nova distribució / Carregar --</option>
-                                {distribucionsDesades.map(d => (
-                                    <option key={d.id_distribucio} value={d.id_distribucio}>
-                                        {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
-                                    </option>
-                                ))}
-                            </select>
-                            <button onClick={handleLoadSelectedDistribucio} disabled={!selectedDistribucioId || loading.global} style={{...buttonStyle, backgroundColor: '#5cb85c', color: 'white'}}>
-                                Carregar
-                            </button>
-                             <button onClick={openConfirmDeleteDistribucioModal} disabled={!selectedDistribucioId || loading.global} style={{...buttonStyle, backgroundColor: '#d9534f', color: 'white'}}>
-                                Esborrar
-                            </button>
-                        </div>
-                        {loading.distribucions && <p>Carregant distribucions...</p>}
-                        {error.distribucio && <p style={{color: 'red'}}>Error distribucions: {error.distribucio}</p>}
-                    </>
-                )}
-            </div>
-            
-            {activePlantilla && availableClasses.length > 0 && (
-                 <div style={classFilterSectionStyle}>
-                    <h3 style={{ marginTop: 0, marginBottom: '10px' }}>2. Filtra alumnes per classe</h3>
-                    <label htmlFor="classFilterSelector" style={labelStyle}>Classes seleccionades:</label>
-                    <Select
-                        id="classFilterSelector"
-                        isMulti
-                        options={availableClasses}
-                        value={selectedFilterClasses}
-                        onChange={setSelectedFilterClasses}
-                        placeholder="Selecciona classes..."
-                        isDisabled={loading.global || loading.classes}
-                        noOptionsMessage={() => "No hi ha classes disponibles."}
-                        styles={selectStyles}
-                    />
-                    {error.classes && <p style={{color: 'red'}}>Error classes: {error.classes}</p>}
-                </div>
-            )}
-
-
-            {activePlantilla && (
-                 <div style={{...controlSectionBaseStyle, borderColor: '#5bc0de', backgroundColor: '#f0faff'}}>
-                    <h3 style={{ marginTop: 0, marginBottom: '10px' }}>3. Desa la distribució actual</h3>
-                     {activeDistribucioInfo && <p><em>{selectedDistribucioId ? `Editant: ${activeDistribucioInfo.nom}` : 'Creant nova distribució...'}</em></p>}
-                    <input
-                        type="text"
-                        placeholder="Nom per a la distribució..."
-                        style={inputStyle}
-                        value={nomNovaDistribucio}
-                        onChange={(e) => setNomNovaDistribucio(e.target.value)}
-                    />
-                    <textarea
-                        placeholder="Descripció (opcional)..."
-                        style={{...inputStyle, height: '60px', resize: 'vertical'}}
-                        value={descNovaDistribucio}
-                        onChange={(e) => setDescNovaDistribucio(e.target.value)}
-                    />
-                    <button 
-                        onClick={handleSaveCurrentDistribucio} 
-                        disabled={loading.distribucio || !nomNovaDistribucio.trim() || selectedFilterClasses.length === 0} 
-                        style={{...buttonStyle, backgroundColor: '#5bc0de', color: 'white'}}
-                        title={selectedFilterClasses.length === 0 ? "Has de seleccionar almenys una classe per desar" : "Desar distribució"}
-                    >
-                        {loading.distribucio ? 'Desant...' : (selectedDistribucioId ? 'Actualitzar distribució (Nou nom/Desc)' : 'Desar nova distribució')}
-                    </button>
-                     {selectedFilterClasses.length === 0 && <p style={{color: 'orange', fontSize: '0.9em', marginTop: '5px'}}>Nota: Has de seleccionar almenys una classe per poder desar la distribució.</p>}
-                </div>
-            )}
-
-            {activePlantilla && (
-                <div style={{...controlSectionBaseStyle, borderColor: '#ffc107', backgroundColor: '#fff8e1'}}>
-                    <h3 style={{ marginTop: 0, marginBottom: '15px' }}>4. Modifica la distribució</h3>
-                    <div style={{display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center'}}>
-                        <label style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                            <input
-                                type="checkbox"
-                                checked={balanceByGender}
-                                onChange={(e) => setBalanceByGender(e.target.checked)}
-                                disabled={isProcessingAutoAssign || isApplyingProposal}
-                            />
-                            Intentar equilibrar per gènere
-                        </label>
-                        <button 
-                            onClick={handleAutoAssign} 
-                            disabled={isProcessingAutoAssign || isApplyingProposal || loading.autoAssign || unassignedStudents.length === 0 || selectedFilterClasses.length === 0}
-                            style={{...buttonStyle, backgroundColor: '#007bff', color: 'white', width: 'auto'}}
-                            title={selectedFilterClasses.length === 0 ? "Selecciona classes primer" : (unassignedStudents.length === 0 ? "No hi ha alumnes no assignats per aquesta selecció de classes" : "Assignar automàticament")}
-                        >
-                            {isProcessingAutoAssign ? 'Processant...' : 'Assignar automàticament alumnes no assignats'}
-                        </button>
-                         <button
-                            onClick={handleClearCurrentAssignments}
-                            disabled={loading.global || displayedStudents.every(s => s.taula_plantilla_id === null) || selectedFilterClasses.length === 0}
-                            style={{...buttonStyle, backgroundColor: '#ffc107', color: 'black', width: 'auto'}}
-                            title="Mou tots els alumnes de les taules al pool d'alumnes no assignats (per al filtre de classes actual)"
-                        >
-                            Desassignar tots els alumnes (del filtre actual)
-                        </button>
-                    </div>
-                    {error.autoAssign && <p style={{ color: 'red', marginTop: '10px', fontWeight:'bold' }}>Error auto-assignació: {error.autoAssign}</p>}
-                    {proposedAssignments.length > 0 && !isApplyingProposal && (
-                        <div style={{border: '1px solid orange', padding: '15px', marginTop: '15px', backgroundColor: '#fff3e0', borderRadius: '8px'}}>
-                            <h4 style={{marginTop:0}}>Assignacions proposades:</h4>
-                            <ul style={{listStylePosition: 'inside', paddingLeft:0, maxHeight: '150px', overflowY: 'auto', marginBottom: '15px'}}>
-                            {proposedAssignments.map(p => (
-                                <li key={p.studentId}><strong>{p.studentName}</strong> → Taula <strong>{p.tableName}</strong></li>
-                            ))}
-                            </ul>
-                            <div style={{textAlign:'center'}}>
-                                <button onClick={applyProposedAssignments} style={{...buttonStyle, backgroundColor: '#28a745', color: 'white'}} disabled={isApplyingProposal}>
-                                    {isApplyingProposal ? 'Aplicant...' : 'Acceptar i aplicar propostes'}
-                                </button>
-                                <button onClick={discardProposedAssignments} style={{...buttonStyle, backgroundColor: '#6c757d', color: 'white'}} disabled={isApplyingProposal}>
-                                    Descartar propostes
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    {isApplyingProposal && <p style={loadingErrorStyle}>Aplicant assignacions proposades...</p>}
-                </div>
-            )}
-
-            {activePlantilla && (selectedFilterClasses.length > 0 || displayedStudents.some(s => s.taula_plantilla_id !== null)) && (
-                <div style={contentWrapperStyle}>
-                    <div style={poolStyle}> 
-                        <StudentPoolDropZone 
-                            onDropToPool={handleUnassignStudent}
-                            unassignedStudentsCount={unassignedStudents.length}
-                        >
-                            {unassignedStudents.length > 0 ? (
-                                unassignedStudents.map(student => (
-                                    <DraggableStudentCard 
-                                        key={`pool-${student.id}`}
-                                        student={{...student, originalTableId: null }}
-                                    />
-                                ))
-                            ) : (
-                                <p style={{textAlign: 'center', fontStyle: 'italic', marginTop: '20px', color: '#777'}}>
-                                    {selectedFilterClasses.length === 0 ? "Selecciona classes per veure alumnes al pool." : "Tots els alumnes de les classes seleccionades estan assignats o no n'hi ha."}
-                                </p>
-                            )}
-                        </StudentPoolDropZone>
-                    </div>
-
-                    <div style={tablesAreaStyle}>
-                        {taulesPerRenderitzar.length > 0 ? (
-                            taulesPerRenderitzar.map(taula => (
-                                <DroppableTable
-                                    key={taula.id_taula_plantilla}
-                                    table={{
-                                        id: taula.id_taula_plantilla,
-                                        table_number: taula.identificador_taula_dins_plantilla,
-                                        capacity: taula.capacitat,
-                                    }}
-                                    studentsInTable={taula.students}
-                                    onDropStudent={handleDropStudentOnTable}
-                                />
-                            ))
-                        ) : (
-                            !loading.global && activePlantilla && <p style={loadingErrorStyle}>Aquesta plantilla no té taules definides.</p>
-                        )}
-                        {loading.global && activePlantilla && <p>Actualitzant taules...</p>}
-                    </div>
-                </div>
-            )}
-             {!activePlantilla && !loading.global && !loading.plantilles && (
-                <div style={{...loadingErrorStyle, marginTop: '30px', fontStyle: 'italic'}}>
-                    Selecciona una plantilla d'aula per començar. Si no n'hi ha cap, ves a "Gestionar plantilles" per crear-ne una.
-                </div>
-             )}
-              {activePlantilla && selectedFilterClasses.length === 0 && !displayedStudents.some(s => s.taula_plantilla_id !== null) && (
-                 <div style={{...loadingErrorStyle, marginTop: '30px', fontStyle: 'italic', color: '#777'}}>
-                    Selecciona una o més classes per començar a distribuir alumnes.
-                </div>
-             )}
-             <ConfirmModal
-                isOpen={isConfirmDeleteDistribucioOpen}
-                onClose={() => setIsConfirmDeleteDistribucioOpen(false)}
-                onConfirm={handleDeleteSelectedDistribucio}
-                title="Confirmar Esborrat de Distribució"
-                message={`Segur que vols esborrar la distribució "${distribucioToDelete?.nom_distribucio}"?`}
+        <MainLayout>
+      <Sidebar>
+        <Typography variant="h5" color="primary" fontWeight={700} mb={1} align="center">
+          Distribució d'alumnes
+        </Typography>
+        <Divider sx={{ mb: 1 }} />
+        {/* 1. Selecció de plantilla i distribució */}
+        <Box>
+          <Typography variant="subtitle1" fontWeight={600} mb={1}>1. Selecciona plantilla</Typography>
+          {error.plantilla && <Alert severity="error" sx={{ mb: 1 }}>{error.plantilla}</Alert>}
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+            <InputLabel id="plantillaSelectorLabel">Plantilla</InputLabel>
+            <MuiSelect
+              labelId="plantillaSelectorLabel"
+              id="plantillaSelector"
+              value={selectedPlantillaId}
+              label="Plantilla"
+              onChange={e => setSelectedPlantillaId(e.target.value)}
+              disabled={loading.plantilles || loading.global}
+            >
+              <MenuItem value="">-- Selecciona una Plantilla --</MenuItem>
+              {plantillesAula.map(p => (
+                <MenuItem key={p.id_plantilla} value={p.id_plantilla}>
+                  {p.nom_plantilla} (Creada: {new Date(p.created_at).toLocaleDateString()})
+                </MenuItem>
+              ))}
+            </MuiSelect>
+          </FormControl>
+          {loading.plantilles && <Typography variant="body2">Carregant plantilles...</Typography>}
+        </Box>
+        {activePlantilla && (
+          <Box>
+            <Typography variant="subtitle2" fontWeight={600} mb={1}>Distribució desada</Typography>
+            <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+              <InputLabel id="distribucioSelectorLabel">Distribució</InputLabel>
+              <MuiSelect
+                labelId="distribucioSelectorLabel"
+                id="distribucioSelector"
+                value={selectedDistribucioId}
+                label="Distribució"
+                onChange={e => setSelectedDistribucioId(e.target.value)}
+                disabled={loading.distribucions || distribucionsDesades.length === 0}
+              >
+                <MenuItem value="">-- Nova distribució / Carregar --</MenuItem>
+                {distribucionsDesades.map(d => (
+                  <MenuItem key={d.id_distribucio} value={d.id_distribucio}>
+                    {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
+                  </MenuItem>
+                ))}
+              </MuiSelect>
+            </FormControl>
+            <Box display="flex" gap={1} mb={1}>
+              <Button variant="contained" color="success" size="small" fullWidth onClick={handleLoadSelectedDistribucio} disabled={!selectedDistribucioId || loading.global}>
+                Carregar
+              </Button>
+              <Button variant="contained" color="error" size="small" fullWidth onClick={openConfirmDeleteDistribucioModal} disabled={!selectedDistribucioId || loading.global}>
+                Esborrar
+              </Button>
+            </Box>
+            {loading.distribucions && <Typography variant="body2">Carregant distribucions...</Typography>}
+            {error.distribucio && <Alert severity="error">{error.distribucio}</Alert>}
+          </Box>
+        )}
+        {/* 2. Filtre de classes */}
+        {activePlantilla && availableClasses.length > 0 && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>2. Filtra per classe</Typography>
+            <Select
+              isMulti
+              options={availableClasses}
+              value={selectedFilterClasses}
+              onChange={setSelectedFilterClasses}
+              placeholder="Selecciona classes..."
+              isDisabled={loading.global || loading.classes}
+              noOptionsMessage={() => "No hi ha classes disponibles."}
+              styles={{
+                control: base => ({ ...base, minHeight: 36, borderRadius: 8, borderColor: '#E0E3EA', fontSize: 14 }),
+                valueContainer: base => ({ ...base, padding: '0 8px'}),
+                input: base => ({ ...base, margin: 0 }),
+              }}
             />
-        </div>
+            {error.classes && <Alert severity="error" sx={{ mt: 1 }}>{error.classes}</Alert>}
+          </Box>
+        )}
+        {/* 4. Controls d'assignació */}
+        {activePlantilla && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>3. Modifica la distribució</Typography>
+            <FormControlLabel
+              control={<Checkbox checked={balanceByGender} onChange={e => setBalanceByGender(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
+              label={<Typography variant="body2">Intentar equilibrar per gènere</Typography>}
+              sx={{ mb: 1 }}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              size="small"
+              onClick={handleAutoAssign}
+              disabled={isProcessingAutoAssign || loading.autoAssign || unassignedStudents.length === 0 || selectedFilterClasses.length === 0}
+              sx={{ mb: 1 }}
+            >
+              {isProcessingAutoAssign ? 'Processant...' : 'Assignar automàticament alumnes no assignats'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="warning"
+              fullWidth
+              size="small"
+              onClick={handleClearCurrentAssignments}
+              disabled={loading.global || displayedStudents.every(s => s.taula_plantilla_id === null) || selectedFilterClasses.length === 0}
+              sx={{ mb: 1 }}
+            >
+              Desassignar tots els alumnes (del filtre actual)
+            </Button>
+            {error.autoAssign && <Alert severity="error" sx={{ mt: 1 }}>{error.autoAssign}</Alert>}
+            {/* {isApplyingProposal && <Box display="flex" alignItems="center" justifyContent="center" py={2}><CircularProgress size={24} /></Box>} */}
+          </Box>
+        )}
+        {/* 3. Desa distribució */}
+        {activePlantilla && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>4. Desa la distribució</Typography>
+            {/* {activeDistribucioInfo && <Typography variant="body2" color="secondary">{selectedDistribucioId ? `Editant: ${activeDistribucioInfo.nom}` : 'Creant nova distribució...'}</Typography>} */}
+            <TextField
+              size="small"
+              fullWidth
+              label="Nom de la distribució"
+              value={nomNovaDistribucio}
+              onChange={e => setNomNovaDistribucio(e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              size="small"
+              fullWidth
+              label="Descripció (opcional)"
+              value={descNovaDistribucio}
+              onChange={e => setDescNovaDistribucio(e.target.value)}
+              multiline
+              minRows={2}
+              sx={{ mb: 1 }}
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              fullWidth
+              size="small"
+              onClick={handleSaveCurrentDistribucio}
+              disabled={loading.distribucio || !nomNovaDistribucio.trim() || selectedFilterClasses.length === 0}
+              sx={{ mb: 1 }}
+            >
+              {loading.distribucio ? 'Desant...' : (selectedDistribucioId ? 'Actualitzar distribució' : 'Desar nova distribució')}
+            </Button>
+            {selectedFilterClasses.length === 0 && <Alert severity="warning">Has de seleccionar almenys una classe per poder desar la distribució.</Alert>}
+          </Box>
+        )}
+
+      </Sidebar>
+      {/* Zona principal: drag & drop */}
+      <DragDropArea>
+        <PoolZone>
+          <StudentPoolDropZone 
+            onDropToPool={handleUnassignStudent}
+            unassignedStudentsCount={unassignedStudents.length}
+          >
+            {unassignedStudents.length > 0 ? (
+              unassignedStudents.map(student => (
+                <DraggableStudentCard 
+                  key={`pool-${student.id}`}
+                  student={{...student, originalTableId: null }}
+                />
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 2 }}>
+                {selectedFilterClasses.length === 0 ? "Selecciona classes per veure alumnes al pool." : "Tots els alumnes de les classes seleccionades estan assignats o no n'hi ha."}
+              </Typography>
+            )}
+          </StudentPoolDropZone>
+        </PoolZone>
+        <TablesZone>
+          {taulesPerRenderitzar.length > 0 ? (
+            taulesPerRenderitzar.map(taula => (
+              <DroppableTable
+                key={taula.id_taula_plantilla}
+                table={{
+                  id: taula.id_taula_plantilla,
+                  table_number: taula.identificador_taula_dins_plantilla,
+                  capacity: taula.capacitat,
+                }}
+                studentsInTable={taula.students}
+                onDropStudent={handleDropStudentOnTable}
+              />
+            ))
+          ) : (
+            !loading.global && activePlantilla && <Typography variant="body2" color="text.secondary" align="center">Aquesta plantilla no té taules definides.</Typography>
+          )}
+          {loading.global && activePlantilla && <Box display="flex" alignItems="center" justifyContent="center" py={2}><CircularProgress size={24} /></Box>}
+        </TablesZone>
+      </DragDropArea>
+      <ConfirmModal
+        isOpen={isConfirmDeleteDistribucioOpen}
+        onClose={() => setIsConfirmDeleteDistribucioOpen(false)}
+        onConfirm={handleDeleteSelectedDistribucio}
+        title="Confirmar Esborrat de Distribució"
+        message={`Segur que vols esborrar la distribució "${distribucioToDelete?.nom_distribucio}"?`}
+      />
+    </MainLayout>
     );
 }
 

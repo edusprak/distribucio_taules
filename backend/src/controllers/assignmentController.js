@@ -46,7 +46,7 @@ const autoAssignStudents = async (req, res) => {
             academic_grade: parseFloat(s.academic_grade),
             gender: s.gender || 'unknown',
             restrictions: Array.isArray(s.restrictions) ? s.restrictions : [],
-            // Important: el frontend haurà d'enviar table_id com a id_taula_plantilla si ja està assignat en la distribució actual
+            preferences: Array.isArray(s.preferences) ? s.preferences : [], // <-- Afegit
             current_table_id: s.table_id || s.id_taula_plantilla || null 
         }));
 
@@ -73,91 +73,213 @@ const autoAssignStudents = async (req, res) => {
         });
 
 
-        let studentsToAssign = allStudents.filter(s => s.current_table_id == null);
-        studentsToAssign.sort((a, b) => (b.academic_grade ?? -Infinity) - (a.academic_grade ?? -Infinity));
+        // 1b. Obtenir totes les assignacions guardades per la plantilla
+        const distribucionsRes = await db.query(
+            `SELECT d.id_distribucio, da.alumne_id, da.taula_plantilla_id
+             FROM distribucions d
+             JOIN distribucio_assignacions da ON d.id_distribucio = da.distribucio_id
+             WHERE d.plantilla_id = $1`,
+            [plantilla_id]
+        );
+        // Agrupa per distribució
+        const distribucionsMap = {};
+        for (const row of distribucionsRes.rows) {
+            if (!distribucionsMap[row.id_distribucio]) distribucionsMap[row.id_distribucio] = {};
+            distribucionsMap[row.id_distribucio][row.alumne_id] = row.taula_plantilla_id;
+        }
+        const distribucionsGuardades = Object.values(distribucionsMap);
 
-        const proposedAssignments = [];
-        const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.academic_grade));
-        const overallAverageGrade = studentsWithValidGrades.length > 0
-            ? studentsWithValidGrades.reduce((sum, s) => sum + s.academic_grade, 0) / studentsWithValidGrades.length
-            : null;
+        // Funció per comparar assignacions
+        function isSameAssignment(proposed, saved) {
+            if (proposed.length !== Object.keys(saved).length) return false;
+            for (const pa of proposed) {
+                if (saved[pa.studentId] !== pa.tableId) return false;
+                console.log('No match:', pa.studentId, pa.tableId, saved[pa.studentId]);
 
-        // 4. Algorisme Greedy (similar a l'anterior, però amb `tablesFromPlantilla`)
-        for (const student of studentsToAssign) {
-            let bestTableForStudent = null;
-            let bestTableScore = -Infinity;
-
-            for (const table of tablesFromPlantilla) {
-                if (table.current_occupancy >= table.capacity) continue;
-
-                let hasRestrictionConflict = false;
-                if (student.restrictions.length > 0) {
-                    for (const assignedStudent of table.students_assigned) {
-                        if (student.restrictions.includes(assignedStudent.id)) {
-                            hasRestrictionConflict = true;
-                            break;
-                        }
-                    }
-                }
-                if (hasRestrictionConflict) continue;
-
-                let currentScore = 0;
-                const studentGrade = student.academic_grade;
-
-                if (overallAverageGrade !== null && !isNaN(studentGrade)) {
-                    const tempStudentsWithGradeInTable = table.students_assigned.filter(s => !isNaN(s.academic_grade));
-                    const newSumGrades = tempStudentsWithGradeInTable.reduce((acc, s) => acc + s.academic_grade, 0) + studentGrade;
-                    const newOccupancyWithGrade = tempStudentsWithGradeInTable.length + 1;
-                    const newAvgGrade = newOccupancyWithGrade > 0 ? newSumGrades / newOccupancyWithGrade : overallAverageGrade;
-                    currentScore -= Math.abs(newAvgGrade - overallAverageGrade) * 1.0;
-                }
-
-                const remainingCapacityAfterAssign = (table.capacity - (table.current_occupancy + 1));
-                currentScore += remainingCapacityAfterAssign * 0.2;
-
-                if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
-                    let tempMaleCount = table.current_male_count;
-                    let tempFemaleCount = table.current_female_count;
-                    if (student.gender === 'male') tempMaleCount++;
-                    else if (student.gender === 'female') tempFemaleCount++;
-
-                    const newTotalStudents = table.current_occupancy + 1;
-                    if (newTotalStudents > 0) {
-                        const genderDifference = Math.abs(tempMaleCount - tempFemaleCount);
-                        currentScore -= genderDifference * 0.5;
-                        if (genderDifference <= 1 && newTotalStudents > 1) currentScore += 0.3;
-                    }
-                }
-
-                if (currentScore > bestTableScore) {
-                    bestTableScore = currentScore;
-                    bestTableForStudent = table;
-                }
             }
-
-            if (bestTableForStudent) {
-                proposedAssignments.push({
-                    studentId: student.id,
-                    tableId: bestTableForStudent.id, // Aquest és id_taula_plantilla
-                    studentName: student.name,
-                    tableName: bestTableForStudent.table_number
-                });
-
-                // Actualitzem l'estat de la taula seleccionada EN MEMÒRIA per a la propera iteració
-                bestTableForStudent.students_assigned.push(student);
-                bestTableForStudent.current_occupancy++;
-                if (!isNaN(student.academic_grade)) {
-                    bestTableForStudent.current_sum_of_grades += student.academic_grade;
-                     const validGradesCount = bestTableForStudent.students_assigned.filter(s=> !isNaN(s.academic_grade)).length;
-                    bestTableForStudent.current_avg_grade = validGradesCount > 0 ? bestTableForStudent.current_sum_of_grades / validGradesCount : null;
-                }
-                if (student.gender === 'male') bestTableForStudent.current_male_count++;
-                else if (student.gender === 'female') bestTableForStudent.current_female_count++;
-            }
+            console.log('MATCH FOUND', proposed, saved);
+            return true;
         }
 
-        res.json({ success: true, proposedAssignments });
+        // Fisher-Yates shuffle util
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
 
+        let foundUnique = false;
+        let proposedAssignments = [];
+        let warnings = [];
+        const MAX_ATTEMPTS = 15;
+        let attempt = 0;
+        while (!foundUnique && attempt < MAX_ATTEMPTS) {
+            attempt++;
+            let studentsToAssign = allStudents.filter(s => s.current_table_id == null);
+            // Aleatoritza l'ordre dels alumnes
+            shuffleArray(studentsToAssign);
+            proposedAssignments = [];
+            warnings = [];
+            // Si vols mantenir la prioritat per nota, pots fer un sort després del shuffle, però aquí volem randomització total
+
+            proposedAssignments = [];
+            const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.academic_grade));
+            const overallAverageGrade = studentsWithValidGrades.length > 0
+                ? studentsWithValidGrades.reduce((sum, s) => sum + s.academic_grade, 0) / studentsWithValidGrades.length
+                : null;
+
+            // 4. Algorisme Greedy (similar a l'anterior, però amb `tablesFromPlantilla`)
+            for (const student of studentsToAssign) {
+                let bestTableForStudent = null;
+                let bestTableScore = -Infinity;
+                let foundTableWithPreference = false;
+                let foundRestrictionVsPreference = false;
+                let preferenceTableCandidates = [];
+                // Aleatoritza l'ordre de les taules per cada alumne
+                const shuffledTables = shuffleArray([...tablesFromPlantilla]);
+                for (const table of shuffledTables) {
+                    if (table.current_occupancy >= table.capacity) continue;
+
+                    let hasRestrictionConflict = false;
+                    if (student.restrictions.length > 0) {
+                        for (const assignedStudent of table.students_assigned) {
+                            if (student.restrictions.includes(assignedStudent.id)) {
+                                hasRestrictionConflict = true;
+                                // Si també és preferit, marquem-ho per warning
+                                if (student.preferences.includes(assignedStudent.id)) {
+                                    foundRestrictionVsPreference = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (hasRestrictionConflict) continue;
+
+                    // Comprova si hi ha algun preferit a la taula
+                    let hasPreferred = false;
+                    if (student.preferences.length > 0) {
+                        for (const assignedStudent of table.students_assigned) {
+                            if (student.preferences.includes(assignedStudent.id)) {
+                                hasPreferred = true;
+                                break;
+                            }
+                        }
+                    }
+                    // Si hi ha preferit, afegeix la taula a candidats
+                    if (hasPreferred) {
+                        preferenceTableCandidates.push(table);
+                        foundTableWithPreference = true;
+                    }
+
+                    // Calcula score normal
+                    let currentScore = 0;
+                    const studentGrade = student.academic_grade;
+
+                    if (overallAverageGrade !== null && !isNaN(studentGrade)) {
+                        const tempStudentsWithGradeInTable = table.students_assigned.filter(s => !isNaN(s.academic_grade));
+                        const newSumGrades = tempStudentsWithGradeInTable.reduce((acc, s) => acc + s.academic_grade, 0) + studentGrade;
+                        const newOccupancyWithGrade = tempStudentsWithGradeInTable.length + 1;
+                        const newAvgGrade = newOccupancyWithGrade > 0 ? newSumGrades / newOccupancyWithGrade : overallAverageGrade;
+                        currentScore -= Math.abs(newAvgGrade - overallAverageGrade) * 1.0;
+                    }
+
+                    const remainingCapacityAfterAssign = (table.capacity - (table.current_occupancy + 1));
+                    currentScore += remainingCapacityAfterAssign * 0.2;
+
+                    if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
+                        let tempMaleCount = table.current_male_count;
+                        let tempFemaleCount = table.current_female_count;
+                        if (student.gender === 'male') tempMaleCount++;
+                        else if (student.gender === 'female') tempFemaleCount++;
+
+                        const newTotalStudents = table.current_occupancy + 1;
+                        if (newTotalStudents > 0) {
+                            const genderDifference = Math.abs(tempMaleCount - tempFemaleCount);
+                            currentScore -= genderDifference * 0.5;
+                            if (genderDifference <= 1 && newTotalStudents > 1) currentScore += 0.3;
+                        }
+                    }
+
+                    if (currentScore > bestTableScore) {
+                        bestTableScore = currentScore;
+                        bestTableForStudent = table;
+                    }
+                }
+
+                // Si hi ha taules amb preferit, escull la millor d'elles
+                if (preferenceTableCandidates.length > 0) {
+                    // Escull la taula amb millor score entre les candidates
+                    let bestPrefTable = null;
+                    let bestPrefScore = -Infinity;
+                    for (const table of preferenceTableCandidates) {
+                        let score = 0;
+                        // Calcula score igual que abans
+                        const studentGrade = student.academic_grade;
+                        if (overallAverageGrade !== null && !isNaN(studentGrade)) {
+                            const tempStudentsWithGradeInTable = table.students_assigned.filter(s => !isNaN(s.academic_grade));
+                            const newSumGrades = tempStudentsWithGradeInTable.reduce((acc, s) => acc + s.academic_grade, 0) + studentGrade;
+                            const newOccupancyWithGrade = tempStudentsWithGradeInTable.length + 1;
+                            const newAvgGrade = newOccupancyWithGrade > 0 ? newSumGrades / newOccupancyWithGrade : overallAverageGrade;
+                            score -= Math.abs(newAvgGrade - overallAverageGrade) * 1.0;
+                        }
+                        const remainingCapacityAfterAssign = (table.capacity - (table.current_occupancy + 1));
+                        score += remainingCapacityAfterAssign * 0.2;
+                        if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
+                            let tempMaleCount = table.current_male_count;
+                            let tempFemaleCount = table.current_female_count;
+                            if (student.gender === 'male') tempMaleCount++;
+                            else if (student.gender === 'female') tempFemaleCount++;
+                            const newTotalStudents = table.current_occupancy + 1;
+                            if (newTotalStudents > 0) {
+                                const genderDifference = Math.abs(tempMaleCount - tempFemaleCount);
+                                score -= genderDifference * 0.5;
+                                if (genderDifference <= 1 && newTotalStudents > 1) score += 0.3;
+                            }
+                        }
+                        if (score > bestPrefScore) {
+                            bestPrefScore = score;
+                            bestPrefTable = table;
+                        }
+                    }
+                    bestTableForStudent = bestPrefTable;
+                }
+                // Si no s'ha pogut assignar a una taula amb preferit, afegeix warning
+                if (student.preferences.length > 0 && !foundTableWithPreference) {
+                    warnings.push(`No s'ha pogut assignar l'alumne ${student.name} (ID ${student.id}) amb cap dels seus preferits.`);
+                }
+                // Si hi ha conflicte preferit-restricció, avisa
+                if (foundRestrictionVsPreference) {
+                    warnings.push(`L'alumne ${student.name} (ID ${student.id}) té una restricció amb un dels seus preferits. La restricció té prioritat.`);
+                }
+                if (bestTableForStudent) {
+                    proposedAssignments.push({
+                        studentId: student.id,
+                        tableId: bestTableForStudent.id,
+                        studentName: student.name,
+                        tableName: bestTableForStudent.table_number
+                    });
+
+                    // Actualitzem l'estat de la taula seleccionada EN MEMÒRIA per a la propera iteració
+                    bestTableForStudent.students_assigned.push(student);
+                    bestTableForStudent.current_occupancy++;
+                    if (!isNaN(student.academic_grade)) {
+                        bestTableForStudent.current_sum_of_grades += student.academic_grade;
+                         const validGradesCount = bestTableForStudent.students_assigned.filter(s=> !isNaN(s.academic_grade)).length;
+                        bestTableForStudent.current_avg_grade = validGradesCount > 0 ? bestTableForStudent.current_sum_of_grades / validGradesCount : null;
+                    }
+                    if (student.gender === 'male') bestTableForStudent.current_male_count++;
+                    else if (student.gender === 'female') bestTableForStudent.current_female_count++;
+                }
+            }
+            // Comprova si la proposta és igual a alguna guardada
+            foundUnique = !distribucionsGuardades.some(saved => isSameAssignment(proposedAssignments, saved));
+        }
+        if (!foundUnique) {
+            return res.status(409).json({ success: false, message: 'No s\'ha pogut generar una distribució diferent de les ja existents per aquesta plantilla.' });
+        }
+        res.json({ success: true, proposedAssignments, warnings });
     } catch (error) {
         console.error('[AutoAssign] Error en auto-assignació:', error);
         res.status(500).json({ success: false, message: 'Error intern del servidor en l\'auto-assignació.', error: error.message });

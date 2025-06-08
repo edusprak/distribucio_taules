@@ -3,17 +3,29 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import classService from '../services/classService';
 import ConfirmModal from '../components/ConfirmModal';
+import { Box, Paper, Typography, Button, TextField, Divider, CircularProgress, Alert } from '@mui/material';
+import { styled } from '@mui/material/styles';
 
-// Estils (pots externalitzar-los)
-const pageStyle = { maxWidth: '700px', margin: '20px auto', padding: '20px', fontFamily: 'Arial, sans-serif' };
-const formStyle = { border: '1px solid #ccc', padding: '20px', borderRadius: '8px', marginBottom: '20px', backgroundColor: '#f9f9f9' };
-const inputStyle = { width: 'calc(100% - 22px)', padding: '10px', marginBottom: '15px', border: '1px solid #ccc', borderRadius: '4px' };
-const buttonStyle = { padding: '10px 15px', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '10px' };
-const saveButtonStyle = { ...buttonStyle, backgroundColor: '#007bff', color: 'white' };
-const cancelButtonStyle = { ...buttonStyle, backgroundColor: '#6c757d', color: 'white' };
-const listStyle = { listStyleType: 'none', padding: 0 };
-const listItemStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderBottom: '1px solid #eee' };
-const errorMsgStyle = { color: 'red', marginBottom: '10px' };
+const MainContainer = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'flex-start',
+  minHeight: 'calc(100vh - 64px)',
+  background: theme.palette.background.default,
+  padding: theme.spacing(3),
+}));
+
+const ContentPaper = styled(Paper)(({ theme }) => ({
+  width: '100%',
+  maxWidth: 700,
+  padding: theme.spacing(3),
+  borderRadius: theme.shape.borderRadius,
+  boxShadow: theme.shadows[2],
+  background: theme.palette.background.paper,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: theme.spacing(2),
+}));
 
 function ClassManagementPage() {
     const [classes, setClasses] = useState([]);
@@ -130,80 +142,88 @@ function ClassManagementPage() {
     };
 
 
-    if (loading && classes.length === 0) return <div style={pageStyle}>Carregant classes...</div>;
-
+    if (loading && classes.length === 0) return (
+      <MainContainer>
+        <ContentPaper>
+          <Box display="flex" alignItems="center" justifyContent="center" minHeight={200}>
+            <CircularProgress />
+            <Typography variant="body1" sx={{ ml: 2 }}>Carregant classes...</Typography>
+          </Box>
+        </ContentPaper>
+      </MainContainer>
+    );
     return (
-        <div style={pageStyle}>
-            <h2>Gestió de classes</h2>
-
-            {error && <p style={errorMsgStyle}>Error: {error}</p>}
-
-            {!isFormVisible && (
-                <button style={{...saveButtonStyle, marginBottom: '20px'}} onClick={handleCreateNew}>
-                    + Crear nova classe
-                </button>
-            )}
-
-            {isFormVisible && (
-                <form onSubmit={handleSave} style={formStyle}>
-                    <h3>{editingClass ? 'Editar classe' : 'Crear nova classe'}</h3>
-                    <div>
-                        <label htmlFor="className" style={{display:'block', marginBottom:'5px'}}>Nom de la classe:</label>
-                        <input
-                            type="text"
-                            id="className"
-                            style={inputStyle}
-                            value={currentName}
-                            onChange={(e) => setCurrentName(e.target.value)}
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="classDescription" style={{display:'block', marginBottom:'5px'}}>Descripció (opcional):</label>
-                        <textarea
-                            id="classDescription"
-                            style={{...inputStyle, height: '60px', resize: 'vertical'}}
-                            value={currentDescription}
-                            onChange={(e) => setCurrentDescription(e.target.value)}
-                        />
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                        <button type="button" style={cancelButtonStyle} onClick={handleCloseForm}>Cancel·lar</button>
-                        <button type="submit" style={saveButtonStyle} disabled={loading}>
-                            {loading ? 'Desant...' : (editingClass ? 'Actualitzar Classe' : 'Crear Classe')}
-                        </button>
-                    </div>
-                </form>
-            )}
-
-            {!isFormVisible && (
-                classes.length > 0 ? (
-                    <ul style={listStyle}>
-                        {classes.map(classe => (
-                            <li key={classe.id_classe} style={listItemStyle}>
-                                <div>
-                                    <strong>{classe.nom_classe}</strong>
-                                    {classe.descripcio_classe && <p style={{margin: '5px 0 0', fontSize: '0.9em', color: '#555'}}>{classe.descripcio_classe}</p>}
-                                </div>
-                                <div>
-                                    <button style={{...buttonStyle, backgroundColor: '#ffc107', color: 'black'}} onClick={() => handleEdit(classe)}>Editar</button>
-                                    <button style={{...buttonStyle, backgroundColor: '#dc3545', color: 'white'}} onClick={() => openConfirmDeleteModal(classe)}>Esborrar</button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    !loading && <p>No hi ha classes per mostrar. Comença creant-ne una!</p>
-                )
-            )}
-            <ConfirmModal
-                isOpen={isConfirmModalOpen}
-                onClose={() => setIsConfirmModalOpen(false)}
-                onConfirm={handleDelete}
-                title="Confirmar Esborrat de Classe"
-                message={`Segur que vols esborrar la classe "${classToDelete?.nom_classe}"? Els alumnes assignats a aquesta classe perdran la seva assignació de classe (passaran a no tenir-ne cap). Aquesta acció no es pot desfer.`}
-            />
-        </div>
+      <MainContainer>
+        <ContentPaper>
+          <Typography variant="h5" color="primary" fontWeight={700} align="center" mb={1}>
+            Gestió de classes
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          {error && <Alert severity="error" sx={{ mb: 2 }}>Error: {error}</Alert>}
+          {!isFormVisible && (
+            <Button variant="contained" color="success" sx={{ mb: 2, alignSelf: 'flex-end' }} onClick={handleCreateNew}>
+              + Crear nova classe
+            </Button>
+          )}
+          {isFormVisible && (
+            <Box component="form" onSubmit={handleSave} sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Typography variant="h6" fontWeight={600} mb={1}>{editingClass ? 'Editar classe' : 'Crear nova classe'}</Typography>
+              <TextField
+                size="small"
+                fullWidth
+                label="Nom de la classe"
+                value={currentName}
+                onChange={e => setCurrentName(e.target.value)}
+                required
+                sx={{ mb: 1 }}
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label="Descripció (opcional)"
+                value={currentDescription}
+                onChange={e => setCurrentDescription(e.target.value)}
+                multiline
+                minRows={2}
+                sx={{ mb: 1 }}
+              />
+              <Box display="flex" justifyContent="flex-end" gap={1}>
+                <Button type="button" variant="outlined" color="inherit" onClick={handleCloseForm}>Cancel·lar</Button>
+                <Button type="submit" variant="contained" color="primary" disabled={loading}>
+                  {loading ? 'Desant...' : (editingClass ? 'Actualitzar Classe' : 'Crear Classe')}
+                </Button>
+              </Box>
+            </Box>
+          )}
+          {!isFormVisible && (
+            classes.length > 0 ? (
+              <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+                {classes.map(classe => (
+                  <Box component="li" key={classe.id_classe} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderBottom: '1px solid #eee' }}>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={600}>{classe.nom_classe}</Typography>
+                      {classe.descripcio_classe && <Typography variant="body2" color="text.secondary">{classe.descripcio_classe}</Typography>}
+                    </Box>
+                    <Box display="flex" gap={1}>
+                      <Button variant="outlined" color="warning" onClick={() => handleEdit(classe)}>Editar</Button>
+                      <Button variant="contained" color="error" onClick={() => openConfirmDeleteModal(classe)}>Esborrar</Button>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            ) : (
+              !loading && <Alert severity="info">No hi ha classes per mostrar. Comença creant-ne una!</Alert>
+            )
+          )}
+          <ConfirmModal
+            isOpen={isConfirmModalOpen}
+            onClose={() => setIsConfirmModalOpen(false)}
+            onConfirm={handleDelete}
+            title="Confirmar Esborrat de Classe"
+            message={`Segur que vols esborrar la classe "${classToDelete?.nom_classe}"? Els alumnes assignats a aquesta classe perdran la seva assignació de classe (passaran a no tenir-ne cap). Aquesta acció no es pot desfer.`}
+          />
+        </ContentPaper>
+      </MainContainer>
     );
 }
 
