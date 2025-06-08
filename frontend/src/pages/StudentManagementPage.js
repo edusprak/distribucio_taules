@@ -5,6 +5,7 @@ import { Box, Paper, Typography, Button, TextField, Divider, CircularProgress, A
 import { styled } from '@mui/material/styles';
 
 import studentService from '../services/studentService';
+import classService from '../services/classService';
 import StudentList from '../components/students/StudentList';
 import StudentForm from '../components/students/StudentForm';
 import StudentImport from '../components/students/StudentImport';
@@ -21,7 +22,7 @@ const MainContainer = styled(Box)(({ theme }) => ({
 
 const ContentPaper = styled(Paper)(({ theme }) => ({
   width: '100%',
-  maxWidth: 600,
+  maxWidth: '90%',
   padding: theme.spacing(3),
   borderRadius: theme.shape.borderRadius,
   boxShadow: theme.shadows[2],
@@ -36,15 +37,31 @@ function StudentManagementPage() {
   const [filteredStudents, setFilteredStudents] = useState([]); // Lista de alumnos a mostrar (filtrada)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-    const [isFormVisible, setIsFormVisible] = useState(false);
+  const [isFormVisible, setIsFormVisible] = useState(false);
   const [isImportVisible, setIsImportVisible] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState(null);
+  const [availableClasses, setAvailableClasses] = useState([]);
   
   const [searchTerm, setSearchTerm] = useState(''); // NUEVO ESTADO para el término de búsqueda
+  // Carregar classes disponibles
+  const fetchClasses = useCallback(async () => {
+    try {
+      const response = await classService.getAllClasses();
+      if (response.success) {
+        setAvailableClasses(response.classes);
+      } else {
+        console.error("Error carregant les classes disponibles.");
+        setAvailableClasses([]);
+      }
+    } catch (error) {
+      console.error("Error carregant les classes disponibles:", error);
+      setAvailableClasses([]);
+    }
+  }, []);
 
-  // Cargar alumnos
+  // Carregar alumnes
   const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
@@ -60,10 +77,10 @@ function StudentManagementPage() {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     fetchStudents();
-  }, [fetchStudents]);
+    fetchClasses();
+  }, [fetchStudents, fetchClasses]);
 
   // NUEVO: useEffect para filtrar alumnos cuando searchTerm o allStudents cambian
   useEffect(() => {
@@ -83,21 +100,31 @@ function StudentManagementPage() {
     setIsFormVisible(true);
     setError(null); // Limpiar errores al abrir el formulario
   };
-
-  const handleEditStudent = async (studentBasics) => {
+  const handleEditStudent = async (student, isDirectEdit = false) => {
     try {
       setLoading(true);
-      const fullStudentData = await studentService.getStudentById(studentBasics.id); //
-      setEditingStudent(fullStudentData);
-      setIsFormVisible(true);
-      setError(null);
+      
+      // Si és edició directa, actualitzar l'alumne sense mostrar el formulari
+      if (isDirectEdit) {
+        await studentService.updateStudent(student.id, student);
+        toast.success(`Alumne "${student.name}" actualitzat.`);
+        await fetchStudents(); // Actualitzar la llista d'alumnes
+      } else {
+        // Comportament original per edició completa (restriccions/preferències)
+        const fullStudentData = await studentService.getStudentById(student.id);
+        setEditingStudent(fullStudentData);
+        setIsFormVisible(true);
+        setError(null);
+      }
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || "Error en carregar les dades de l'alumne per editar.";
       console.error("Error fetching student details for editing:", err);
       setError(errorMessage);
-      toast.error(errorMessage); // Notificar al usuario
-      setIsFormVisible(false);
-      setEditingStudent(null);
+      toast.error(errorMessage);
+      if (!isDirectEdit) {
+        setIsFormVisible(false);
+        setEditingStudent(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -240,6 +267,8 @@ function StudentManagementPage() {
           filteredStudents.length > 0 ? (
             <StudentList
               students={filteredStudents}
+              allStudents={allStudents}
+              allClasses={availableClasses}
               onEditStudent={handleEditStudent}
               onDeleteStudent={studentId => {
                 const student = allStudents.find(s => s.id === studentId);

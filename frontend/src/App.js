@@ -19,8 +19,7 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <DndProvider backend={HTML5Backend}>
-        <Router>
-          <div className="App">
+        <Router>          <div className="App" style={{ width: '100%', maxWidth: '100%' }}>
             <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'center', gap: '15px' }}>
               <Link to="/" style={{ textDecoration: 'none', color: '#333' }}>Inici</Link>
               <Link to="/classes" style={{ textDecoration: 'none', color: '#333' }}>Gestionar classes</Link>
@@ -29,7 +28,7 @@ function App() {
               <Link to="/distribucions" style={{ textDecoration: 'none', color: '#333' }}>Distribuir alumnes</Link>
             </nav>
 
-            <main style={{ padding: '20px' }}>
+            <main style={{ padding: '20px', width: '100%' }}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/students" element={<StudentManagementPage />} /> 

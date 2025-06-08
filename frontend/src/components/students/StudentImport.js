@@ -120,16 +120,15 @@ function StudentImport({ onClose, onImportSuccess }) {
       setFileName('');
     }
   };
-
   // Generar plantilla de ejemplo
   const generateTemplateFile = (type) => {
     // Campos de ejemplo para la plantilla
-    const headers = ['nombre', 'nota', 'genero', 'restricciones', 'preferencias'];
+    const headers = ['nom', 'nota', 'gènere'];
     const sampleData = [
-      ['Ana García', '8.5', 'female', 'Juan López', 'Maria Rodríguez'],
-      ['Pedro Martínez', '7.2', 'male', '', 'Ana García'],
-      ['Juan López', '6.8', 'male', 'Ana García', ''],
-      ['Maria Rodríguez', '9.1', 'female', '', 'Pedro Martínez']
+      ['Alumne 1', '8.5', 'female'],
+      ['Alumne 2', '7.2', 'male'],
+      ['Alumne 3', '6.8', 'male'],
+      ['Alumne 4', '9.1', 'female']
     ];
     
     if (type === 'csv') {
@@ -142,18 +141,15 @@ function StudentImport({ onClose, onImportSuccess }) {
       // Crear y descargar el archivo
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       setImportTemplate(URL.createObjectURL(blob));
-      setTimeout(() => document.getElementById('templateLink').click(), 100);
-    } else {
-      // Para Excel necesitaríamos una librería como SheetJS, 
-      // pero aquí solo proporcionaremos instrucciones para crear manualmente
-      toast.info('Crea un archivo Excel con las siguientes columnas: nombre, nota, genero, restricciones, preferencias');
+      setTimeout(() => document.getElementById('templateLink').click(), 100);    } else {
+      toast.info('Crea un fitxer Excel amb les següents columnes: nom, nota, gènere');
     }
   };
 
   // Importar estudiantes
   const handleImport = async () => {
     if (!file) {
-      setError('Por favor, selecciona un archivo.');
+      setError('Si us plau, selecciona un fitxer.');
       return;
     }
     
@@ -167,22 +163,22 @@ function StudentImport({ onClose, onImportSuccess }) {
       );
       
       if (result.success) {
-        toast.success(result.message || 'Importación completada correctamente.');
+        toast.success(result.message || 'Importació completada correctament.');
         
         if (result.errors && result.errors.length > 0) {
           // Si hay errores pero la importación fue parcialmente exitosa
-          toast.warning(`Se encontraron ${result.errors.length} errores durante la importación.`);
-          console.error('Errores de importación:', result.errors);
+          toast.warning(`S'han trobat ${result.errors.length} errors durant la importació.`);
+          console.error('Errors d\'importació:', result.errors);
         }
         
         onImportSuccess && onImportSuccess();
         onClose();
       } else {
-        throw new Error(result.message || 'Error desconocido durante la importación.');
+        throw new Error(result.message || 'Error desconegut durant la importació.');
       }
     } catch (error) {
-      setError(error.message || 'Error durante la importación. Por favor, verifica el formato del archivo.');
-      toast.error(error.message || 'Error durante la importación.');
+      setError(error.message || 'Error durant la importació. Si us plau, verifica el format del fitxer.');
+      toast.error(error.message || 'Error durant la importació.');
     } finally {
       setLoading(false);
     }
@@ -196,10 +192,10 @@ function StudentImport({ onClose, onImportSuccess }) {
       
       {error && <Alert severity="error" style={{ marginBottom: '15px' }}>{error}</Alert>}
       
-      <div style={{ marginBottom: '15px' }}>
-        <Typography variant="body2" color="textSecondary" paragraph>
+      <div style={{ marginBottom: '15px' }}>        <Typography variant="body2" color="textSecondary" paragraph>
           Pots importar alumnes des d'un fitxer CSV o Excel (xlsx/xls).
-          El fitxer ha de tenir les següents columnes: nom (obligatori), nota, gènere, restriccions, preferències.
+          El fitxer ha de tenir les següents columnes: nom (obligatori), nota, gènere.
+          Les restriccions i preferències només es podran definir a través de l'aplicació web.
         </Typography>
         
         <Box display="flex" gap={1} mb={2}>
@@ -214,7 +210,7 @@ function StudentImport({ onClose, onImportSuccess }) {
             <a 
               id="templateLink"
               href={importTemplate}
-              download="plantilla_importacion_alumnos.csv"
+              download="plantilla_importacio_alumnes.csv"
               style={{display: 'none'}}
             >
               Descargar

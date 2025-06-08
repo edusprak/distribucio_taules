@@ -19,7 +19,7 @@ const MainContainer = styled(Box)(({ theme }) => ({
 
 const ContentPaper = styled(Paper)(({ theme }) => ({
   width: '100%',
-  maxWidth: 700,
+  maxWidth: '90%',
   padding: theme.spacing(3),
   borderRadius: theme.shape.borderRadius,
   boxShadow: theme.shadows[2],

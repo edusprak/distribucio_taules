@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import classService from '../services/classService';
+import ClassList from '../components/classes/ClassList';
 import ConfirmModal from '../components/ConfirmModal';
 import { Box, Paper, Typography, Button, TextField, Divider, CircularProgress, Alert } from '@mui/material';
 import { styled } from '@mui/material/styles';
@@ -17,7 +18,7 @@ const MainContainer = styled(Box)(({ theme }) => ({
 
 const ContentPaper = styled(Paper)(({ theme }) => ({
   width: '100%',
-  maxWidth: 700,
+  maxWidth: '90%',
   padding: theme.spacing(3),
   borderRadius: theme.shape.borderRadius,
   boxShadow: theme.shadows[2],
@@ -194,23 +195,13 @@ function ClassManagementPage() {
                 </Button>
               </Box>
             </Box>
-          )}
-          {!isFormVisible && (
+          )}          {!isFormVisible && (
             classes.length > 0 ? (
-              <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
-                {classes.map(classe => (
-                  <Box component="li" key={classe.id_classe} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, borderBottom: '1px solid #eee' }}>
-                    <Box>
-                      <Typography variant="subtitle1" fontWeight={600}>{classe.nom_classe}</Typography>
-                      {classe.descripcio_classe && <Typography variant="body2" color="text.secondary">{classe.descripcio_classe}</Typography>}
-                    </Box>
-                    <Box display="flex" gap={1}>
-                      <Button variant="outlined" color="warning" onClick={() => handleEdit(classe)}>Editar</Button>
-                      <Button variant="contained" color="error" onClick={() => openConfirmDeleteModal(classe)}>Esborrar</Button>
-                    </Box>
-                  </Box>
-                ))}
-              </Box>
+              <ClassList 
+                classes={classes}
+                onEditClass={handleEdit}
+                onDeleteClass={openConfirmDeleteModal}
+              />
             ) : (
               !loading && <Alert severity="info">No hi ha classes per mostrar. Comença creant-ne una!</Alert>
             )

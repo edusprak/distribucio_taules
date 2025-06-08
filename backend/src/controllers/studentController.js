@@ -380,8 +380,9 @@ const importStudentsFromFile = async (req, res) => {
     if (fileType === 'csv') {
       const { parse } = require('csv-parse');
       const fs = require('fs');
-      
-      // Llegir i parsejar el fitxer CSV
+        // Llegir i parsejar el fitxer CSV
+      // Mantenim columns:true per llegir la primera fila com a capçalera
+      // Però ignorarem els noms de les columnes i utilitzarem l'ordre
       const parser = parse({columns: true, delimiter: ',', trim: true});
       const records = [];
       
@@ -448,17 +449,29 @@ const importStudentsFromFile = async (req, res) => {
 };
 
 // Funció auxiliar per mapear registres a dades d'estudiants
+// Ara processa per posició de columna, no per nom
+// Assumim que l'ordre de les columnes és: nom, nota, gènere
 const mapRecordsToStudentData = (records, idClasse) => {
   return records.map(record => {
-    // Mapea els camps del fitxer a l'estructura de dades d'Estudiant
-    // Noms de camps esperats: nombre, nota, genero, restriccions, preferències
+    // Convertir el registre a array d'objectes si encara no ho és
+    let values = record;
+    
+    if (typeof record === 'object' && !Array.isArray(record)) {
+      // Si és un objecte (com en CSV), agafem els valors en l'ordre correcte
+      const recordValues = Object.values(record);
+      if (recordValues.length > 0) {
+        values = recordValues;
+      }
+    }
+    
     return {
-      name: record.nombre || record.name || '',
-      academic_grade: parseFloat(record.nota || record.academic_grade || record.grade || '0'),
-      gender: record.genero || record.gender || null,
+      name: Array.isArray(values) ? values[0] || '' : record.nombre || record.name || record.nom || '',
+      academic_grade: parseFloat(Array.isArray(values) ? values[1] || '0' : record.nota || record.academic_grade || record.grade || '0'),
+      gender: Array.isArray(values) ? values[2] || null : record.genero || record.gender || record.gènere || null,
       id_classe_alumne: idClasse,
-      restrictionsNames: (record.restriccions || record.restrictions || '').toString().split(',').map(r => r.trim()).filter(r => r),
-      preferencesNames: (record.preferències || record.preferences || '').toString().split(',').map(p => p.trim()).filter(p => p)
+      // Ja no processem restriccions ni preferències des del fitxer
+      restrictionsNames: [],
+      preferencesNames: []
     };
   });
 };
