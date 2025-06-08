@@ -18,6 +18,7 @@ const thStyle = {
   fontWeight: 'bold',
   position: 'sticky',
   top: 0,
+  cursor: 'pointer',
 };
 
 const tdStyle = {
@@ -52,12 +53,24 @@ const editableCellStyle = {
   position: 'relative',
 };
 
-// Eliminem selectStyles ja que no s'utilitza amb els nous dropdowns
+const sortIconStyle = {
+  marginLeft: '5px',
+  fontSize: '0.8em',
+  display: 'inline-block',
+};
+
+const thContainerStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+};
 
 function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, allClasses }) {
   const studentsForOptions = allStudents || students;
   const [editingState, setEditingState] = useState(null); // { studentId, field, value }
   const [editingValue, setEditingValue] = useState('');
+  const [sortBy, setSortBy] = useState('name'); // Per defecte, ordenem per nom
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
   const inputRef = useRef(null);
     // Function removed because we now use Select option labels directly
   
@@ -83,6 +96,26 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       inputRef.current.select();
     }
   }, [editingState]);
+
+  // Funció per gestionar el clic en l'encapçalament per ordenar
+  const handleSortClick = (field) => {
+    if (sortBy === field) {
+      // Si ja estem ordenant per aquest camp, canviem la direcció
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Si canviem de camp, ordenem ascendentment
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+  
+  // Funció per obtenir el símbol de la fletxa segons el camp i l'ordre actual
+  const getSortArrow = (field) => {
+    if (sortBy === field) {
+      return sortOrder === 'asc' ? ' ↑' : ' ↓';
+    }
+    return '';
+  };
 
   const startEditing = (student, field) => {
     let value = '';
@@ -123,7 +156,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
     } else if ((field === 'restrictions' || field === 'preferences')) {
       updatedValue = editingValue.map(item => item.value);
       
-      const otherField = field === 'restrictions' ? 'preferences' : 'restrictions';
+      const otherField = field === 'restrictions' ? 'preferences' : 'restriccions';
       let otherValues = student[otherField] || [];
       
       if (Array.isArray(otherValues)) {
@@ -163,10 +196,44 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       cancelEditing();
     }
   };
+  
+  // Ordenar estudiants segons el camp i la direcció seleccionats
+  const getSortedStudents = () => {
+    if (!students || students.length === 0) return [];
+    
+    return [...students].sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'academic_grade':
+          const gradeA = parseFloat(a.academic_grade) || 0;
+          const gradeB = parseFloat(b.academic_grade) || 0;
+          comparison = gradeA - gradeB;
+          break;
+        case 'gender':
+          comparison = (a.gender || '').localeCompare(b.gender || '');
+          break;
+        case 'class_name':
+          const classA = allClasses?.find(c => c.id_classe === a.id_classe_alumne)?.nom_classe || '';
+          const classB = allClasses?.find(c => c.id_classe === b.id_classe_alumne)?.nom_classe || '';
+          comparison = classA.localeCompare(classB);
+          break;
+        default:
+          comparison = 0;
+      }
+      
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  };
 
   if (!students || students.length === 0) {
     return <p style={{ textAlign: 'center', padding: '20px', fontStyle: 'italic' }}>No hi ha alumnes per mostrar.</p>;
   }
+
+  const sortedStudents = getSortedStudents();
 
   // Renderitzar sense espais blancs entre elements
   return React.createElement(
@@ -181,9 +248,46 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
         React.createElement(
           'tr',
           null,
-          React.createElement('th', { style: thStyle }, 'Nom'),          React.createElement('th', { style: {...thStyle, width: '80px'} }, 'Nota'),
-          React.createElement('th', { style: {...thStyle, width: '120px'} }, 'Gènere'),
-          React.createElement('th', { style: {...thStyle, width: '150px'} }, 'Classe'),
+          React.createElement(
+            'th', 
+            { style: thStyle, onClick: () => handleSortClick('name') },
+            React.createElement(
+              'div',
+              { style: thContainerStyle },
+              'Nom',
+              React.createElement('span', { style: sortIconStyle }, getSortArrow('name'))
+            )
+          ),
+          React.createElement(
+            'th', 
+            { style: {...thStyle, width: '80px'}, onClick: () => handleSortClick('academic_grade') },
+            React.createElement(
+              'div',
+              { style: thContainerStyle },
+              'Nota',
+              React.createElement('span', { style: sortIconStyle }, getSortArrow('academic_grade'))
+            )
+          ),
+          React.createElement(
+            'th', 
+            { style: {...thStyle, width: '120px'}, onClick: () => handleSortClick('gender') },
+            React.createElement(
+              'div',
+              { style: thContainerStyle },
+              'Gènere',
+              React.createElement('span', { style: sortIconStyle }, getSortArrow('gender'))
+            )
+          ),
+          React.createElement(
+            'th', 
+            { style: {...thStyle, width: '150px'}, onClick: () => handleSortClick('class_name') },
+            React.createElement(
+              'div',
+              { style: thContainerStyle },
+              'Classe',
+              React.createElement('span', { style: sortIconStyle }, getSortArrow('class_name'))
+            )
+          ),
           React.createElement('th', { style: thStyle }, 'Restriccions'),
           React.createElement('th', { style: thStyle }, 'Preferències'),
           React.createElement('th', { style: {...thStyle, width: '140px'} }, 'Accions')
@@ -192,7 +296,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       React.createElement(
         'tbody',
         null,
-        students.map((student, index) => {
+        sortedStudents.map((student, index) => {
           if (!student) {
             return React.createElement(
               'tr',

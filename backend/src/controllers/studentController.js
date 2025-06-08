@@ -23,19 +23,14 @@ const getAllStudents = async (req, res) => {
             FROM student_restrictions sr
             WHERE sr.student_id_1 = s.id
           ) AS r
-        ) AS restrictions,
-        (
-          SELECT COALESCE(json_agg(DISTINCT p.preferred_student_id), '[]'::json) -- NOU PER PREFERÈNCIES
+        ) AS restrictions,        (
+          SELECT COALESCE(json_agg(DISTINCT p.preferred_student_id), '[]'::json)
           FROM (
-            SELECT sp.student_id_1 AS preferred_student_id
-            FROM student_preferences sp
-            WHERE sp.student_id_2 = s.id
-            UNION
             SELECT sp.student_id_2 AS preferred_student_id
             FROM student_preferences sp
             WHERE sp.student_id_1 = s.id
           ) AS p
-        ) AS preferences -- NOU PER PREFERÈNCIES
+        ) AS preferences
       FROM students s
       LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
       GROUP BY s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe
@@ -84,13 +79,11 @@ const getStudentById = async (req, res) => {
        WHERE student_id_1 = $1 OR student_id_2 = $1`,
       [id]
     );
-    student.restrictions = restrictionsResult.rows.map(r => r.restricted_with_student_id);
-
-    // NOU: Obtenir preferències
+    student.restrictions = restrictionsResult.rows.map(r => r.restricted_with_student_id);    // Obtenir preferències (unidireccional, només les que ha indicat l'alumne)
     const preferencesResult = await db.query(
-      `SELECT CASE WHEN student_id_1 = $1 THEN student_id_2 ELSE student_id_1 END as preferred_student_id
+      `SELECT student_id_2 as preferred_student_id
        FROM student_preferences
-       WHERE student_id_1 = $1 OR student_id_2 = $1`,
+       WHERE student_id_1 = $1`,
       [id]
     );
     student.preferences = preferencesResult.rows.map(r => r.preferred_student_id);
@@ -143,19 +136,16 @@ const createStudent = async (req, res) => {
                 }
             }
         }
-        newStudent.restrictions = createdRestrictionsIds;
-
-        // NOU: Desar preferències
+        newStudent.restrictions = createdRestrictionsIds;        // Desar preferències (unidireccionals)
         let createdPreferencesIds = [];
         if (preferences && preferences.length > 0) {
             for (const preferredStudentId of preferences) {
-                const id1 = Math.min(newStudent.id, parseInt(preferredStudentId));
-                const id2 = Math.max(newStudent.id, parseInt(preferredStudentId));
-                if (id1 === id2) continue; // No es pot tenir preferència amb si mateix
+                // Ja no ordenem, perquè volem preservar la direccionalitat
+                if (newStudent.id === parseInt(preferredStudentId)) continue; // No es pot tenir preferència amb si mateix
                 try {
                     await db.query(
                         'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
-                        [id1, id2]
+                        [newStudent.id, parseInt(preferredStudentId)]
                     );
                     createdPreferencesIds.push(preferredStudentId);
                 } catch (preferenceError) {
@@ -281,21 +271,18 @@ const updateStudent = async (req, res) => {
                 [id]
             );
             updatedStudentData.restrictions = currentRestrictionsResult.rows.map(r => r.restricted_with_student_id);
-        }
-
-        // NOU: Gestió de preferències
+        }        // Gestió de preferències (unidireccionals)
         if (preferences !== undefined) {
-            await db.query('DELETE FROM student_preferences WHERE student_id_1 = $1 OR student_id_2 = $1', [id]);
+            await db.query('DELETE FROM student_preferences WHERE student_id_1 = $1', [id]);
             let updatedStudentPreferencesIds = [];
             if (preferences.length > 0) {
                 for (const preferredStudentId of preferences) {
-                    const id1 = Math.min(parseInt(id), parseInt(preferredStudentId));
-                    const id2 = Math.max(parseInt(id), parseInt(preferredStudentId));
-                    if (id1 === id2) continue;
+                    // Ja no ordenem els IDs perquè volem preservar la direccionalitat
+                    if (parseInt(id) === parseInt(preferredStudentId)) continue;
                     try {
                         await db.query(
                             'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
-                            [id1, id2]
+                            [parseInt(id), parseInt(preferredStudentId)]
                         );
                         updatedStudentPreferencesIds.push(preferredStudentId);
                     } catch (preferenceError) {
@@ -309,12 +296,11 @@ const updateStudent = async (req, res) => {
                     }
                 }
             }
-            updatedStudentData.preferences = updatedStudentPreferencesIds;
-        } else { // Si no s'envien preferències, les recuperem
+            updatedStudentData.preferences = updatedStudentPreferencesIds;        } else { // Si no s'envien preferències, les recuperem (només les que ha indicat l'alumne)
             const currentPreferencesResult = await db.query(
-               `SELECT CASE WHEN student_id_1 = $1 THEN student_id_2 ELSE student_id_1 END as preferred_student_id
+               `SELECT student_id_2 as preferred_student_id
                 FROM student_preferences
-                WHERE student_id_1 = $1 OR student_id_2 = $1`,
+                WHERE student_id_1 = $1`,
                [id]
            );
            updatedStudentData.preferences = currentPreferencesResult.rows.map(r => r.preferred_student_id);
@@ -540,17 +526,14 @@ const processImportedStudents = async (studentsData) => {
             
             // Buscar a l'estudiant per nom
             const preferredStudent = await db.query('SELECT id FROM students WHERE name = $1', [preferenceName]);
-            if (preferredStudent.rows.length > 0) {
-              const preferredId = preferredStudent.rows[0].id;
-              const id1 = Math.min(newStudentId, preferredId);
-              const id2 = Math.max(newStudentId, preferredId);
+            if (preferredStudent.rows.length > 0) {              const preferredId = preferredStudent.rows[0].id;
               
-              if (id1 === id2) continue; // No es pot tenir preferència consigo mateix
+              if (newStudentId === preferredId) continue; // No es pot tenir preferència amb si mateix
               
               try {
                 await db.query(
                   'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
-                  [id1, id2]
+                  [newStudentId, preferredId]
                 );
               } catch (preferenceError) {
                 if (preferenceError.code !== '23505') { // Ignorar errors de duplicats

@@ -79,7 +79,8 @@ CREATE TABLE student_restrictions (
     CONSTRAINT check_different_students_restriction CHECK (student_id_1 < student_id_2)
 );
 
--- NOVA TAULA: Taula de Preferències entre Alumnes (student_preferences)
+-- Taula de Preferències entre Alumnes (student_preferences)
+-- Ara és unidireccional: student_id_1 prefereix seure amb student_id_2
 CREATE TABLE student_preferences (
     student_id_1 INT NOT NULL,
     student_id_2 INT NOT NULL,
@@ -92,7 +93,7 @@ CREATE TABLE student_preferences (
         FOREIGN KEY(student_id_2)
         REFERENCES students(id)
         ON DELETE CASCADE,
-    CONSTRAINT check_different_students_preference CHECK (student_id_1 < student_id_2)
+    CONSTRAINT check_no_self_preference CHECK (student_id_1 != student_id_2)
 );
 
 -- Taula de Plantilles d'Aula (aula_plantilles)

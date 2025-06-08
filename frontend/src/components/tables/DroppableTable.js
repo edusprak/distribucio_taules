@@ -1,5 +1,5 @@
 // frontend/src/components/tables/DroppableTable.js
-import React from 'react';
+import React, { useState } from 'react';
 import { useDrop } from 'react-dnd';
 import { ItemTypes } from '../../utils/dndItemTypes'; //
 import DraggableStudentCard from '../students/DraggableStudentCard'; //
@@ -28,6 +28,13 @@ const tableHeaderStyle = {
   textAlign: 'center',
 };
 
+const tableInfoStyle = {
+  fontSize: '0.9em',
+  color: '#555',
+  textAlign: 'center',
+  marginBottom: '8px',
+};
+
 const dropZoneInfoStyle = {
     textAlign: 'center',
     fontStyle: 'italic',
@@ -36,12 +43,37 @@ const dropZoneInfoStyle = {
     paddingTop: '10px',
 };
 
+const sortButtonsContainerStyle = {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '10px',
+    borderBottom: '1px solid #eee',
+    paddingBottom: '8px',
+};
 
+const sortButtonStyle = {
+    border: 'none',
+    background: 'none',
+    cursor: 'pointer',
+    fontSize: '0.8em',
+    padding: '3px 6px',
+    margin: '0 2px',
+    borderRadius: '3px',
+    transition: 'all 0.2s ease',
+};
 
+const activeSortButtonStyle = {
+    ...sortButtonStyle,
+    backgroundColor: '#e8f0fd',
+    fontWeight: 'bold',
+    border: '1px solid #b0c4de',
+};
 
 function DroppableTable({ table, studentsInTable, onDropStudent }) { 
     // table ara és: { id (id_taula_plantilla), table_number (identificador_taula_dins_plantilla), capacity }
     const { draggedStudentInfo } = useDragState();
+    const [sortBy, setSortBy] = useState('name'); // Per defecte, ordenem per nom
+    const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
 
     const [{ canDrop, isOver }, drop] = useDrop(() => ({
         accept: ItemTypes.STUDENT,
@@ -84,13 +116,110 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
         }),
     }), [table, studentsInTable, onDropStudent, draggedStudentInfo]);
 
+    // Calcula la mitjana de les notes acadèmiques dels alumnes a aquesta taula
+    const calculateAverageGrade = () => {
+        if (!studentsInTable || studentsInTable.length === 0) return 'N/A';
+
+        const validGrades = studentsInTable
+            .map(student => parseFloat(student.academic_grade))
+            .filter(grade => !isNaN(grade));
+        
+        if (validGrades.length === 0) return 'N/A';
+        
+        const average = validGrades.reduce((acc, grade) => acc + grade, 0) / validGrades.length;
+        return average.toFixed(2);
+    };
+
+    // Ordenar els estudiants
+    const sortStudents = (students) => {
+        if (!students || students.length === 0) return [];
+        
+        const sortedStudents = [...students].sort((a, b) => {
+            if (sortBy === 'name') {
+                return sortOrder === 'asc' 
+                    ? a.name.localeCompare(b.name) 
+                    : b.name.localeCompare(a.name);
+            } else if (sortBy === 'academic_grade') {
+                const gradeA = parseFloat(a.academic_grade) || 0;
+                const gradeB = parseFloat(b.academic_grade) || 0;
+                return sortOrder === 'asc' ? gradeA - gradeB : gradeB - gradeA;
+            } else if (sortBy === 'gender') {
+                return sortOrder === 'asc' 
+                    ? (a.gender || '').localeCompare(b.gender || '') 
+                    : (b.gender || '').localeCompare(a.gender || '');
+            }
+            return 0;
+        });
+        
+        return sortedStudents;
+    };
+
+    // Canviar ordre de classificació
+    const handleSortClick = (attribute) => {
+        if (sortBy === attribute) {
+            // Si ja estem ordenant per aquest atribut, canviem la direcció
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            // Si estem ordenant per un nou atribut, establim aquest i comencem per ordre ascendent
+            setSortBy(attribute);
+            setSortOrder('asc');
+        }
+    };
+
+    const averageGrade = calculateAverageGrade();
+    const sortedStudents = sortStudents(studentsInTable);
+
+    // Estil per al botó seleccionat
+    const getSortButtonStyle = (attribute) => {
+        return attribute === sortBy ? activeSortButtonStyle : sortButtonStyle;
+    };
+
+    // Fletxa indicadora de la direcció de l'ordre
+    const getSortArrow = (attribute) => {
+        if (attribute === sortBy) {
+            return sortOrder === 'asc' ? '↑' : '↓';
+        }
+        return '';
+    };
+
     return (
         <div ref={drop} style={tableStyle(isOver, canDrop)}>
             <div style={tableHeaderStyle}>
                 {table.table_number} ({studentsInTable?.length || 0}/{table.capacity})
             </div>
-            {studentsInTable && studentsInTable.length > 0 ? (
-                studentsInTable.map(student => (
+            <div style={tableInfoStyle}>
+                Mitjana nota: {averageGrade}
+            </div>
+            
+            {/* Botons d'ordenació */}
+            {studentsInTable && studentsInTable.length > 1 && (
+                <div style={sortButtonsContainerStyle}>
+                    <button 
+                        style={getSortButtonStyle('name')} 
+                        onClick={() => handleSortClick('name')}
+                        title="Ordenar per nom"
+                    >
+                        Nom {getSortArrow('name')}
+                    </button>
+                    <button 
+                        style={getSortButtonStyle('academic_grade')} 
+                        onClick={() => handleSortClick('academic_grade')}
+                        title="Ordenar per nota"
+                    >
+                        Nota {getSortArrow('academic_grade')}
+                    </button>
+                    <button 
+                        style={getSortButtonStyle('gender')} 
+                        onClick={() => handleSortClick('gender')}
+                        title="Ordenar per gènere"
+                    >
+                        Gènere {getSortArrow('gender')}
+                    </button>
+                </div>
+            )}
+            
+            {sortedStudents && sortedStudents.length > 0 ? (
+                sortedStudents.map(student => (
                     <DraggableStudentCard 
                         key={student.id} 
                         student={{ ...student, originalTableId: table.id }} // Passem l'ID actual de la taula de plantilla
