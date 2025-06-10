@@ -135,21 +135,9 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
     if (isNaN(grade) || grade < 0 || grade > 10) {
         toast.warn('La nota acadèmica ha de ser un número entre 0 i 10.');
         return;
-    }
-
-    // Assegurar-se que un alumne no estigui tant en restriccions com en preferències
+    }    // S'ha eliminat la validació que impedia un alumne estar tant a preferències com a restriccions
     const restrictionIds = selectedRestrictions.map(r => r.value);
     const preferenceIds = selectedPreferences.map(p => p.value);
-    const commonIds = restrictionIds.filter(id => preferenceIds.includes(id));
-
-    if (commonIds.length > 0) {
-        const commonStudentNames = commonIds.map(id => {
-            const student = allStudents.find(s => s.id === id);
-            return student ? student.name : `ID ${id}`;
-        }).join(', ');
-        toast.warn(`Un alumne no pot estar simultàniament en restriccions i preferències. Alumne(s) en comú: ${commonStudentNames}.`);
-        return;
-    }
 
 
     const studentData = {

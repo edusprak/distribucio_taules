@@ -152,24 +152,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       updatedValue = grade;
     } else if (field === 'name' && !editingValue.trim()) {
       alert("El nom de l'alumne no pot estar buit.");
-      return;
-    } else if ((field === 'restrictions' || field === 'preferences')) {
+      return;    } else if ((field === 'restrictions' || field === 'preferences')) {
       updatedValue = editingValue.map(item => item.value);
-      
-      const otherField = field === 'restrictions' ? 'preferences' : 'restriccions';
-      let otherValues = student[otherField] || [];
-      
-      if (Array.isArray(otherValues)) {
-        const commonIds = updatedValue.filter(id => otherValues.includes(id));
-        if (commonIds.length > 0) {
-          const commonItems = commonIds.map(id => {
-            const commonStudent = students.find(s => s.id === id);
-            return commonStudent ? commonStudent.name : `ID ${id}`;
-          });
-          alert(`Un alumne no pot estar simultàniament en restriccions i preferències. Alumne(s) en comú: ${commonItems.join(', ')}.`);
-          return;
-        }
-      }
+      // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
     }
     
     const updatedStudent = { ...student };
@@ -456,29 +441,16 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                         const restrictedStudent = studentsForOptions.find(s => s.id === id);
                         return restrictedStudent ? { value: restrictedStudent.id, label: restrictedStudent.name } : null;
                       }).filter(Boolean)
-                    : [],
-                  onChange: selectedOptions => {
+                    : [],                  onChange: selectedOptions => {
                     const newValues = (selectedOptions || []);
                     setEditingValue(newValues);
                     
-                    // Validar que no hi hagi conflicte amb preferències
-                    const restrictionIds = newValues.map(item => item.value);
-                    const preferences = student.preferences || [];
-                    
-                    const commonIds = restrictionIds.filter(id => preferences.includes(id));
-                    if (commonIds.length > 0) {
-                      const commonNames = commonIds.map(id => {
-                        const commonStudent = studentsForOptions.find(s => s.id === id);
-                        return commonStudent ? commonStudent.name : `ID ${id}`;
-                      });
-                      alert(`Un alumne no pot estar simultàniament en restriccions i preferències. Alumne(s) en comú: ${commonNames.join(', ')}.`);
-                      return;
-                    }
+                    // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
                     
                     // Aplicar canvis directament
                     const updatedStudent = { 
                       ...student, 
-                      restrictions: restrictionIds
+                      restrictions: newValues.map(item => item.value)
                     };
                     onEditStudent(updatedStudent, true);
                     setEditingState(null);
@@ -553,24 +525,12 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                     const newValues = (selectedOptions || []);
                     setEditingValue(newValues);
                     
-                    // Validar que no hi hagi conflicte amb restriccions
-                    const preferenceIds = newValues.map(item => item.value);
-                    const restrictions = student.restrictions || [];
-                    
-                    const commonIds = preferenceIds.filter(id => restrictions.includes(id));
-                    if (commonIds.length > 0) {
-                      const commonNames = commonIds.map(id => {
-                        const commonStudent = studentsForOptions.find(s => s.id === id);
-                        return commonStudent ? commonStudent.name : `ID ${id}`;
-                      });
-                      alert(`Un alumne no pot estar simultàniament en restriccions i preferències. Alumne(s) en comú: ${commonNames.join(', ')}.`);
-                      return;
-                    }
+                    // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
                     
                     // Aplicar canvis directament
                     const updatedStudent = { 
                       ...student, 
-                      preferences: preferenceIds
+                      preferences: newValues.map(item => item.value)
                     };
                     onEditStudent(updatedStudent, true);
                     setEditingState(null);
