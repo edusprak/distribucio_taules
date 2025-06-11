@@ -4,7 +4,7 @@ echo "🚀 Desplegament del Backend a AWS EC2..."
 
 # Variables de configuració
 EC2_HOST="13.37.128.222"  # Elastic IP de la instància EC2
-SSH_KEY="~/.ssh/agrupam-key.pem"
+SSH_KEY="$HOME/.ssh/agrupam-key.pem"
 
 # Verificar clau SSH
 if [ ! -f "$SSH_KEY" ]; then
@@ -55,7 +55,7 @@ fi
 # Clonar o actualitzar el projecte
 if [ ! -d "distribucio_taules" ]; then
     echo "📥 Clonant el projecte..."
-    git clone https://github.com/YOUR_USERNAME/distribucio_taules.git
+    git clone https://github.com/edusprak/distribucio_taules.git
 else
     echo "📥 Actualitzant el projecte..."
     cd distribucio_taules
@@ -66,17 +66,17 @@ cd distribucio_taules/backend
 
 # Aturar contenidors existents
 echo "🛑 Aturant contenidors existents..."
-docker-compose down
+sudo docker-compose --env-file .env.aws down 2>/dev/null || true
 
 # Construir i iniciar els contenidors
 echo "🔨 Construint i iniciant contenidors..."
-docker-compose --env-file .env.aws up -d --build
+sudo docker-compose --env-file .env.aws up -d --build
 
 echo "⏳ Esperant que els contenidors estiguin llestos..."
-sleep 20
+sleep 30
 
 echo "🔍 Verificant estat dels contenidors..."
-docker-compose ps
+sudo docker-compose --env-file .env.aws ps
 
 echo "✅ Desplegament del backend completat!"
 '
