@@ -9,7 +9,11 @@ require('dotenv').config();
 
 const db = require('./src/db');
 
+// Importar el middleware d'autenticació
+const { authenticateToken } = require('./src/middleware/auth');
+
 // Importar les rutes
+const authRoutes = require('./src/routes/authRoutes');
 const studentRoutes = require('./src/routes/studentRoutes');
 const classRoutes = require('./src/routes/classRoutes');
 const plantillaAulaRoutes = require('./src/routes/plantillaAulaRoutes');
@@ -29,12 +33,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Muntar les rutes
-app.use('/api/students', studentRoutes);
-app.use('/api/classes', classRoutes);
-app.use('/api/plantilles_aula', plantillaAulaRoutes); // AFEGIR AQUESTA
-app.use('/api/distribucions', distribucioRoutes); // ADAPTAR (proper pas, antic 'configurations')
-app.use('/api/assignments', assignmentRoutes);
+// Rutes d'autenticació (no protegides)
+app.use('/api/auth', authRoutes);
+
+// Aplicar autenticació a totes les altres rutes de l'API
+app.use('/api/students', authenticateToken, studentRoutes);
+app.use('/api/classes', authenticateToken, classRoutes);
+app.use('/api/plantilles_aula', authenticateToken, plantillaAulaRoutes);
+app.use('/api/distribucions', authenticateToken, distribucioRoutes);
+app.use('/api/assignments', authenticateToken, assignmentRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: "Benvingut/da a l'API de gestió de classe!" });

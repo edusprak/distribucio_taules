@@ -1,8 +1,8 @@
 // frontend/src/services/classService.js
 import axios from 'axios';
 
-const API_URL_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001/api';
-const API_URL = `${API_URL_BASE}/classes`;
+const API_URL_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001';
+const API_URL = `${API_URL_BASE}/api/classes`;
 
 // Crear una nova classe
 const createClass = async (classData) => {

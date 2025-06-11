@@ -14,34 +14,157 @@ import PlantillaAulaManagementPage from './pages/PlantillaAulaManagementPage';
 import ClassroomArrangementPage from './pages/ClassroomArrangementPage';
 import theme from './assets/theme';
 
+// Importar components d'autenticació
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+
+// Component per botó de logout
+function LogoutButton() {
+  const { logout, user } = useAuth();
+  
+  const handleLogout = () => {
+    if (window.confirm('Estàs segur que vols tancar la sessió?')) {
+      logout();
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+      <span style={{ 
+        fontSize: '14px', 
+        color: 'rgba(255,255,255,0.9)',
+        background: 'rgba(255,255,255,0.1)',
+        padding: '6px 12px',
+        borderRadius: '20px',
+        border: '1px solid rgba(255,255,255,0.2)'
+      }}>
+        👤 {user?.username || 'Usuari'}
+      </span>
+      <button 
+        onClick={handleLogout}
+        style={{
+          background: 'rgba(231, 76, 60, 0.8)',
+          color: 'white',
+          border: '1px solid rgba(255,255,255,0.3)',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          transition: 'all 0.3s ease',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.background = '#e74c3c';
+          e.target.style.transform = 'translateY(-1px)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = 'rgba(231, 76, 60, 0.8)';
+          e.target.style.transform = 'translateY(0)';
+        }}
+      >
+        🚪 Sortir
+      </button>
+    </div>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <DndProvider backend={HTML5Backend}>
-        <Router>          <div className="App" style={{ width: '100%', maxWidth: '100%' }}>
-            <nav style={{ marginBottom: '20px', background: '#f0f0f0', padding: '10px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'center', gap: '15px' }}>
-              <Link to="/" style={{ textDecoration: 'none', color: '#333' }}>Inici</Link>
-              <Link to="/classes" style={{ textDecoration: 'none', color: '#333' }}>Gestionar classes</Link>
-              <Link to="/students" style={{ textDecoration: 'none', color: '#333' }}>Gestionar alumnes</Link>
-              <Link to="/plantilles-aula" style={{ textDecoration: 'none', color: '#333' }}>Gestionar plantilles</Link>
-              <Link to="/distribucions" style={{ textDecoration: 'none', color: '#333' }}>Distribuir alumnes</Link>
-            </nav>
-
-            <main style={{ padding: '20px', width: '100%' }}>
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/students" element={<StudentManagementPage />} /> 
-                <Route path="/classes" element={<ClassManagementPage />} /> {/* NOVA RUTA */}
-                <Route path="/plantilles-aula" element={<PlantillaAulaManagementPage />} />
-                <Route path="/distribucions" element={<ClassroomArrangementPage />} />
-              </Routes>
-            </main>
-            <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />
-          </div>
-        </Router>
-      </DndProvider>
+      <AuthProvider>
+        <ProtectedRoute>
+          <DndProvider backend={HTML5Backend}>
+            <Router>          <div className="App" style={{ width: '100%', maxWidth: '100%' }}>
+                <AppContent />
+              </div>
+            </Router>
+          </DndProvider>
+        </ProtectedRoute>
+      </AuthProvider>
     </ThemeProvider>
+  );
+}
+
+function AppContent() {
+  return (
+    <>
+      <nav style={{ 
+        marginBottom: '20px', 
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+        padding: '15px 20px', 
+        borderBottom: '3px solid #5a67d8',
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+      }}>        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <Link to="/" className="nav-link" style={{ 
+            textDecoration: 'none', 
+            color: 'white', 
+            fontWeight: 'bold',
+            fontSize: '1.1rem',
+            padding: '8px 15px',
+            borderRadius: '6px',
+            transition: 'all 0.3s ease',
+            backgroundColor: 'rgba(255,255,255,0.1)'
+          }}>
+            🏠 Inici
+          </Link>
+          <Link to="/classes" className="nav-link" style={{ 
+            textDecoration: 'none', 
+            color: 'white', 
+            padding: '8px 15px',
+            borderRadius: '6px',
+            transition: 'all 0.3s ease'
+          }}>
+            📚 Classes
+          </Link>
+          <Link to="/students" className="nav-link" style={{ 
+            textDecoration: 'none', 
+            color: 'white',
+            padding: '8px 15px',
+            borderRadius: '6px',
+            transition: 'all 0.3s ease'
+          }}>
+            👥 Alumnes
+          </Link>
+          <Link to="/plantilles-aula" className="nav-link" style={{ 
+            textDecoration: 'none', 
+            color: 'white',
+            padding: '8px 15px',
+            borderRadius: '6px',
+            transition: 'all 0.3s ease'
+          }}>
+            📋 Plantilles
+          </Link>
+          <Link to="/distribucions" className="nav-link" style={{ 
+            textDecoration: 'none', 
+            color: 'white',
+            padding: '8px 15px',
+            borderRadius: '6px',
+            transition: 'all 0.3s ease'
+          }}>
+            🎯 Distribuir
+          </Link>
+        </div>
+        <LogoutButton />
+      </nav>
+
+      <main style={{ padding: '20px', width: '100%' }}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/students" element={<StudentManagementPage />} /> 
+          <Route path="/classes" element={<ClassManagementPage />} /> {/* NOVA RUTA */}
+          <Route path="/plantilles-aula" element={<PlantillaAulaManagementPage />} />
+          <Route path="/distribucions" element={<ClassroomArrangementPage />} />
+        </Routes>
+      </main>
+      <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} newestOnTop={false} closeOnClick rtl={false} pauseOnFocusLoss draggable pauseOnHover theme="colored" />
+    </>
   );
 }
 
