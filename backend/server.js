@@ -29,7 +29,16 @@ if (!fs.existsSync(uploadsDir)) {
   console.log('Directorio de uploads creado:', uploadsDir);
 }
 
-app.use(cors());
+// Configuració CORS per producció i desenvolupament
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://agrupam.com', 'https://www.agrupam.com']
+    : ['http://localhost:3000'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

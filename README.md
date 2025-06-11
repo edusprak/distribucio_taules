@@ -145,87 +145,36 @@ El projecte també inclou scripts per desenvolupament tradicional (sense Docker)
 
 ## Desplegament
 
-### Desplegament del Frontend
+### Desplegament Local
+Per desenvolupament local, consulta [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md)
 
-El frontend està desplegat a AWS S3 amb CloudFront com a CDN:
+### Desplegament a AWS (Producció)
+L'aplicació es pot desplegar a AWS utilitzant la capa gratuita:
 
-1. **Generar build de producció**:
-   ```bash
-   cd frontend
-   npm run build
-   ```
+- **Frontend**: AWS S3 + CloudFront amb domini personalitzat (agrupam.com)
+- **Backend**: AWS EC2 t2.micro amb Docker i PostgreSQL
 
-2. **Pujar a S3**:
-   ```bash
-   aws s3 sync build/ s3://distribucio-taules-frontend-1749583112 --delete
-   ```
+📖 **Guia completa**: Consulta [AWS_DEPLOYMENT.md](./AWS_DEPLOYMENT.md) per instruccions detallades pas a pas.
 
-3. **Invalidar cache de CloudFront**:
-   ```bash
-   aws cloudfront create-invalidation --distribution-id E2E6KNDTJH5XOJ --paths "/*"
-   ```
-
-### Desplegament del Backend
-
-El backend està desplegat a una instància EC2 amb Docker. 
-**Nota**: Per Windows, es recomana utilitzar WSL per al deployment del backend.
-
-#### Configuració inicial WSL (primera vegada)
-
-```bash
-# Des de WSL, executar script de configuració
-./setup-wsl-deployment.sh
-```
-
-#### Desplegament
-
-1. **Via WSL (recomanat per Windows)**:
-   ```bash
-   # Des de WSL
-   ./deploy-backend.sh
-   ```
-
-2. **Via PowerShell**:
-   ```powershell
-   Import-Module .\deploy-scripts.ps1
-   Deploy-Backend-WSL
-   ```
-
-3. **Verificar estat**:
-   ```bash
-   # Des de WSL - connectar i verificar
-   ssh -i ~/.ssh/distribucio-key.pem ec2-user@api.agrupam.com
-   cd /home/ec2-user/distribucio_taules/backend
-   docker-compose ps
-   docker-compose logs -f backend
-   ```
-
-### URLs del projecte
-
-- **Frontend**: https://agrupam.com
-- **Backend API**: https://api.agrupam.com
-- **Documentació de desplegament**: Consultar `DEPLOYMENT.md` per a més detalls
+**Scripts de desplegament**:
+- `deploy-frontend-aws.sh`: Desplegament del frontend a S3
+- `deploy-backend-aws.sh`: Desplegament del backend a EC2
 
 ## Manteniment
 
 ### Documentació del Projecte
 
 - **Desenvolupament local**: Consulta `LOCAL_DEVELOPMENT.md` per instruccions completes
-- **Guia ràpida**: Consulta `QUICK_DEPLOY.md` per instruccions essencials
-- **Desplegament producció**: Consulta `DEPLOYMENT.md` per instruccions detallades
-- **Neteja del projecte**: Consulta `CLEANUP_SUMMARY.md` per veure els canvis recents
-- **Scripts d'automatització**: Utilitza els scripts `start-local.*`, `deploy-*.sh` o `deploy-scripts.ps1`
+- **Autenticació**: Consulta `AUTHENTICATION.md` per gestió d'usuaris i autenticació
 
 ### Fitxers Importants
 
-- `start-local.bat` / `start-local.ps1`: Scripts per iniciar en local
-- `stop-local.bat` / `stop-local.ps1`: Scripts per aturar serveis locals
-- `start-dev.bat`: Script per desenvolupament tradicional (sense Docker)
-- `setup-wsl-deployment.sh`: Configuració inicial de WSL per deployment
-- `deploy-frontend.sh`: Desplegament automàtic del frontend a AWS
-- `deploy-backend.sh`: Desplegament automàtic del backend a EC2 (WSL)
-- `deploy-scripts.ps1`: Scripts PowerShell per Windows (inclou WSL)
+- `start-backend-local.ps1`: Script per iniciar backend en local
+- `start-frontend-local.ps1`: Script per iniciar frontend en local  
+- `reset-database.ps1`: Script per reiniciar la base de dades local
+- `deploy-frontend-aws.sh`: Script de desplegament del frontend a AWS
+- `deploy-backend-aws.sh`: Script de desplegament del backend a AWS
 - `LOCAL_DEVELOPMENT.md`: Guia completa de desenvolupament local
-- `DEPLOYMENT.md`: Guia completa de desplegament en producció
-- `CLEANUP_SUMMARY.md`: Resum de la neteja del projecte
+- `AWS_DEPLOYMENT.md`: Guia completa de desplegament a AWS
+- `AUTHENTICATION.md`: Documentació del sistema d'autenticació
 
