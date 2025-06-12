@@ -10,7 +10,7 @@ fi
 
 # Variables
 S3_BUCKET="agrupam-distribucio-frontend"
-CLOUDFRONT_DISTRIBUTION_ID=""
+CLOUDFRONT_DISTRIBUTION_ID="E3TPUPFSK0Q8MY"
 
 echo "📦 Instal·lant dependències..."
 npm install
@@ -24,7 +24,7 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "☁️ Pujant a S3..."
-aws s3 sync build/ s3://$S3_BUCKET --delete --acl public-read
+aws s3 sync build/ s3://$S3_BUCKET --delete
 
 if [ $? -ne 0 ]; then
     echo "❌ Error pujant a S3"

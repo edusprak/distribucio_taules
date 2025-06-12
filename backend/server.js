@@ -32,7 +32,12 @@ if (!fs.existsSync(uploadsDir)) {
 // Configuració CORS per producció i desenvolupament
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://agrupam.com', 'https://www.agrupam.com']
+    ? [
+        'https://agrupam.com', 
+        'https://www.agrupam.com',
+        'https://d1dtggzp2rneqc.cloudfront.net',
+        'http://agrupam-distribucio-frontend.s3-website.eu-west-3.amazonaws.com'
+      ]
     : ['http://localhost:3000'],
   credentials: true,
   optionsSuccessStatus: 200
