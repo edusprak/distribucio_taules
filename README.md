@@ -84,20 +84,29 @@ L'aplicació Distribució de Grups és una eina dissenyada per ajudar els docent
 
 ### Desplegament Local (Desenvolupament)
 
-### Desplegament Local (Desenvolupament)
-
 **Scripts disponibles** (mètode recomanat):
 
 ```powershell
-# 1. Reset i configuració inicial de la base de dades
-.\reset-database.ps1
+# 1. Neteja l'entorn local si hi ha problemes (opcional)
+.\reset-local-environment.ps1
 
-# 2. Iniciar backend (Docker + PostgreSQL)
+# 2. Iniciar backend local (Docker + PostgreSQL, sense SSL)
 .\start-backend-local.ps1
 
 # 3. Iniciar frontend (React) - en una altra terminal
 .\start-frontend-local.ps1
 ```
+
+**URLs locals**:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:3001/api
+- PostgreSQL: localhost:5432
+
+**Nota**: Per a problemes de configuració local, consulta [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
+
+### Desplegament de Producció
+
+Consulta [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md) per a instruccions de desplegament a AWS.
 
 **URLs locals:**
 - Frontend: http://localhost:3000
