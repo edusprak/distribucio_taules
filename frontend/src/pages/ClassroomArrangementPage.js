@@ -11,6 +11,7 @@ import DraggableStudentCard from '../components/students/DraggableStudentCard';
 import DroppableTable from '../components/tables/DroppableTable';
 import StudentPoolDropZone from '../components/students/StudentPoolDropZone';
 import ConfirmModal from '../components/ConfirmModal';
+import ExportDistributionButton from '../components/export/ExportDistributionButton';
 import axios from 'axios';
 import Select from 'react-select'; // Per al selector de classes
 import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert } from '@mui/material';
@@ -543,8 +544,7 @@ function ClassroomArrangementPageContent() {
                   </MenuItem>
                 ))}
               </MuiSelect>
-            </FormControl>
-            <Box display="flex" gap={1} mb={1}>
+            </FormControl>            <Box display="flex" gap={1} mb={1}>
               <Button variant="contained" color="success" size="small" fullWidth onClick={handleLoadSelectedDistribucio} disabled={!selectedDistribucioId || loading.global}>
                 Carregar
               </Button>
@@ -552,6 +552,23 @@ function ClassroomArrangementPageContent() {
                 Esborrar
               </Button>
             </Box>
+            {/* Exportar distribució carregada */}
+            {selectedDistribucioId && activeDistribucioInfo && (
+              <Box mb={1}>
+                <ExportDistributionButton
+                  distribucio={{
+                    nom_distribucio: activeDistribucioInfo.nom,
+                    descripcio_distribucio: activeDistribucioInfo.descripcio || '',
+                    created_at: new Date().toISOString()
+                  }}
+                  studentsData={displayedStudents}
+                  plantilla={activePlantilla}
+                  variant="outlined"
+                  size="small"
+                  disabled={loading.global || displayedStudents.length === 0}
+                />
+              </Box>
+            )}
             {loading.distribucions && <Typography variant="body2">Carregant distribucions...</Typography>}
             {error.distribucio && <Alert severity="error">{error.distribucio}</Alert>}
           </Box>
@@ -634,8 +651,7 @@ function ClassroomArrangementPageContent() {
               multiline
               minRows={2}
               sx={{ mb: 1 }}
-            />
-            <Button
+            />            <Button
               variant="contained"
               color="primary"
               fullWidth
@@ -647,6 +663,28 @@ function ClassroomArrangementPageContent() {
               {loading.distribucio ? 'Desant...' : (selectedDistribucioId ? 'Actualitzar distribució' : 'Desar nova distribució')}
             </Button>
             {selectedFilterClasses.length === 0 && <Alert severity="warning">Has de seleccionar almenys una classe per poder desar la distribució.</Alert>}
+          </Box>
+        )}
+        {/* 4. Exportar distribució */}
+        {activePlantilla && displayedStudents.length > 0 && (
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>5. Exportar distribució</Typography>
+            <ExportDistributionButton
+              distribucio={{
+                nom_distribucio: nomNovaDistribucio || activeDistribucioInfo?.nom || 'Distribució actual',
+                descripcio_distribucio: descNovaDistribucio || activeDistribucioInfo?.descripcio || '',
+                created_at: new Date().toISOString()
+              }}
+              studentsData={displayedStudents}
+              plantilla={activePlantilla}
+              variant="outlined"
+              size="small"
+              disabled={loading.global}
+              className="w-100"
+            />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontSize: '0.75rem' }}>
+              Exporta la distribució actual en diferents formats per compartir o arxivar.
+            </Typography>
           </Box>
         )}
 
