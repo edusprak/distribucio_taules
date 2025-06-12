@@ -1,96 +1,124 @@
 #!/bin/bash
 
-echo "🚀 Desplegament del Backend a AWS EC2..."
+# --- Configuration ---
+EC2_HOST="35.181.242.74"
+SSH_KEY="$HOME/.ssh/agrupam-key.pem" # Assuming this path is correct in WSL
+LOCAL_ENV_FILE="/mnt/c/Users/edusp/projectes/distribucio_taules/backend/.env.aws" # WSL path
+REMOTE_ENV_FILE_PATH_ON_EC2="/tmp/distribucio_env_aws_from_local.tmp"
+APP_DOMAIN="api.agrupam.com"
+CERTBOT_EMAIL="eduard.almacellas@gmail.com"
+PROJECT_REPO="https://github.com/edusprak/distribucio_taules.git"
+PROJECT_DIR_ON_EC2="/home/ec2-user/distribucio_taules"
+# --- End Configuration ---
 
-# Variables de configuració
-EC2_HOST="35.181.242.74"  # Elastic IP de la instància EC2
-SSH_KEY="$HOME/.ssh/agrupam-key.pem"
-
-# Verificar clau SSH
-if [ ! -f "$SSH_KEY" ]; then
-    echo "❌ Error: Clau SSH no trobada a $SSH_KEY"
-    echo "💡 Assegura't que tens la clau SSH d'EC2 configurada"
+error_exit() {
+    echo "❌ Error: $1" >&2
     exit 1
+}
+
+echo "🚀 Iniciant desplegament del Backend a AWS EC2 (versió simplificada)..."
+
+[ ! -f "$SSH_KEY" ] && error_exit "Clau SSH no trobada a $SSH_KEY"
+[ -z "$EC2_HOST" ] && error_exit "EC2_HOST no configurat."
+[ ! -f "$LOCAL_ENV_FILE" ] && error_exit "Fitxer .env.aws local no trobat a $LOCAL_ENV_FILE"
+echo "✅ Validacions locals completades."
+
+echo "📋 Copiant $LOCAL_ENV_FILE a ec2-user@$EC2_HOST:$REMOTE_ENV_FILE_PATH_ON_EC2..."
+scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$LOCAL_ENV_FILE" "ec2-user@$EC2_HOST:$REMOTE_ENV_FILE_PATH_ON_EC2"
+if [ $? -ne 0 ]; then
+    error_exit "Fallada al copiar .env.aws via scp."
 fi
+echo "✅ .env.aws copiat a $REMOTE_ENV_FILE_PATH_ON_EC2 a l'EC2."
 
-# Verificar que tenim l'host d'EC2
-if [ -z "$EC2_HOST" ]; then
-    echo "❌ Error: EC2_HOST no configurat"
-    echo "💡 Edita aquest script i afegeix l'IP o domini de la instància EC2"
-    exit 1
-fi
+REMOTE_SCRIPT=$(cat <<EOF
+set -eux
 
-echo "🔗 Connectant a la instància EC2..."
+echo "--- Inici script remot ---"
+# Variables d'entorn ja disponibles: APP_DOMAIN, CERTBOT_EMAIL, PROJECT_DIR_ON_EC2, REMOTE_ENV_FILE_PATH_ON_EC2, PROJECT_REPO
 
-# Comandaments a executar a EC2
-DEPLOY_COMMANDS='
-echo "📍 Connectat a la instància EC2"
-echo "📂 Navegant al directori del projecte..."
+sudo dnf update -y
+sudo dnf install -y docker git certbot policycoreutils-python-utils cronie
 
-# Actualitzar el sistema
-sudo yum update -y
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker ec2-user || true # Pot fallar si ja hi és, no és crític aquí
 
-# Instal·lar Docker si no està instal·lat
-if ! command -v docker &> /dev/null; then
-    echo "🐳 Instal·lant Docker..."
-    sudo yum install -y docker
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    sudo usermod -aG docker ec2-user
-fi
-
-# Instal·lar Docker Compose si no està instal·lat
 if ! command -v docker-compose &> /dev/null; then
-    echo "🐙 Instal·lant Docker Compose..."
     sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
 fi
 
-# Instal·lar Git si no està instal·lat
-if ! command -v git &> /dev/null; then
-    echo "📚 Instal·lant Git..."
-    sudo yum install -y git
+if [ ! -d "$PROJECT_DIR_ON_EC2" ]; then
+    git clone "$PROJECT_REPO" "$PROJECT_DIR_ON_EC2"
+fi
+cd "$PROJECT_DIR_ON_EC2"
+git pull origin main # Assegura't que la branca 'main' existeix o canvia a la teva branca per defecte
+cd "$PROJECT_DIR_ON_EC2/backend"
+
+sudo mv "$REMOTE_ENV_FILE_PATH_ON_EC2" .env.aws
+sudo chmod 600 .env.aws
+
+sudo mkdir -p /opt/certbot/conf /opt/certbot/www
+sudo chown -R ec2-user:ec2-user /opt/certbot # O l'usuari que corri nginx/certbot
+
+DUMMY_CERT_LIVE_DIR="/opt/certbot/conf/live/$APP_DOMAIN"
+sudo mkdir -p "$DUMMY_CERT_LIVE_DIR"
+# Només crea dummy si no existeixen els fitxers reals
+if [ ! -f "$DUMMY_CERT_LIVE_DIR/fullchain.pem" ] || [ ! -f "$DUMMY_CERT_LIVE_DIR/privkey.pem" ]; then
+  sudo openssl req -x509 -nodes -days 1 -newkey rsa:2048 -keyout "$DUMMY_CERT_LIVE_DIR/privkey.pem" -out "$DUMMY_CERT_LIVE_DIR/fullchain.pem" -subj "/CN=$APP_DOMAIN"
 fi
 
-# Clonar o actualitzar el projecte
-if [ ! -d "distribucio_taules" ]; then
-    echo "📥 Clonant el projecte..."
-    git clone https://github.com/edusprak/distribucio_taules.git
-else
-    echo "📥 Actualitzant el projecte..."
-    cd distribucio_taules
-    git pull origin main
-fi
-
-cd distribucio_taules/backend
-
-# Aturar contenidors existents
-echo "🛑 Aturant contenidors existents..."
 sudo docker-compose --env-file .env.aws down 2>/dev/null || true
-
-# Construir i iniciar els contenidors
-echo "🔨 Construint i iniciant contenidors..."
 sudo docker-compose --env-file .env.aws up -d --build
 
-echo "⏳ Esperant que els contenidors estiguin llestos..."
-sleep 30
+echo "Esperant 20s per Nginx..."
+sleep 20
 
-echo "🔍 Verificant estat dels contenidors..."
-sudo docker-compose --env-file .env.aws ps
+sudo certbot certonly --webroot -w /opt/certbot/www \
+  --cert-name "$APP_DOMAIN" \
+  --config-dir /opt/certbot/conf --logs-dir /opt/certbot/logs --work-dir /opt/certbot/work \
+  --email "$CERTBOT_EMAIL" -d "$APP_DOMAIN" \
+  --agree-tos --no-eff-email --keep-until-expiring --non-interactive --preferred-challenges http
 
-echo "✅ Desplegament del backend completat!"
-'
-
-# Executar comandaments a EC2
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ec2-user@$EC2_HOST "$DEPLOY_COMMANDS"
-
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "🎉 Backend desplegat correctament!"
-    echo "🌐 API URL: https://api.agrupam.com"
-    echo "📋 Per veure logs: ssh -i $SSH_KEY ec2-user@$EC2_HOST"
-    echo "   Després: cd distribucio_taules/backend && docker-compose logs -f"
+CERTBOT_STATUS=$?
+if [ $CERTBOT_STATUS -eq 0 ]; then
+    echo "Certificat SSL OK. Recarregant Nginx."
+    sudo docker-compose exec nginx nginx -s reload
 else
-    echo "❌ Error durant el desplegament"
-    exit 1
+    echo "Error Certbot: $CERTBOT_STATUS. Nginx no recarregat amb certificat nou."
 fi
+
+sudo docker-compose ps
+
+CRON_COMMAND="0 3 * * * sudo certbot renew --quiet --config-dir /opt/certbot/conf --logs-dir /opt/certbot/logs --work-dir /opt/certbot/work --post-hook 'cd \$PROJECT_DIR_ON_EC2/backend && sudo docker-compose exec nginx nginx -s reload'"
+(sudo crontab -l 2>/dev/null | grep -qF "certbot renew") || \\
+  ( (sudo crontab -l 2>/dev/null; echo "\$CRON_COMMAND") | sudo crontab - )
+
+echo "--- Fi script remot ---"
+EOF
+)
+
+# Assegura salts de línia Unix (LF) i elimina espais en blanc al final de les línies
+REMOTE_SCRIPT=$(echo "$REMOTE_SCRIPT" | sed 's/[ \t]*$//' | tr -d '\r')
+
+echo "🔗 Connectant a ec2-user@$EC2_HOST per executar l'script remot..."
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 "ec2-user@$EC2_HOST" \
+  APP_DOMAIN="$APP_DOMAIN" \
+  CERTBOT_EMAIL="$CERTBOT_EMAIL" \
+  PROJECT_DIR_ON_EC2="$PROJECT_DIR_ON_EC2" \
+  REMOTE_ENV_FILE_PATH_ON_EC2="$REMOTE_ENV_FILE_PATH_ON_EC2" \
+  PROJECT_REPO="$PROJECT_REPO" \
+  bash -c "$REMOTE_SCRIPT"
+
+SSH_EXIT_CODE=$?
+
+if [ $SSH_EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "✅✅ ÈXIT GENERAL: Desplegament del backend (simplificat) completat correctament a $EC2_HOST!"
+    echo "🌐 API URL: https://$APP_DOMAIN/api"
+    echo "🩺 Health Check: https://$APP_DOMAIN/health"
+else
+    error_exit "Fallada durant l'execució del script remot (simplificat) a l'EC2, codi de sortida SSH: $SSH_EXIT_CODE. Revisa la sortida."
+fi
+
+exit 0
