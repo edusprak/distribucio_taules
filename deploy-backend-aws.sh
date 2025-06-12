@@ -3,7 +3,7 @@
 echo "🚀 Desplegament del Backend a AWS EC2..."
 
 # Variables de configuració
-EC2_HOST="13.37.128.222"  # Elastic IP de la instància EC2
+EC2_HOST="35.181.242.74"  # Elastic IP de la instància EC2
 SSH_KEY="$HOME/.ssh/agrupam-key.pem"
 
 # Verificar clau SSH
