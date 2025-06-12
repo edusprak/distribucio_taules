@@ -13,7 +13,7 @@ export const exportDistributionToCSV = (distribucio, studentsData, plantilla) =>
   // Convertir les dades a format CSV
   const csvContent = [
     // Capçalera del CSV
-    ['Nom Alumne', 'Nota Acadèmica', 'Gènere', 'Classe', 'Taula Assignada', 'Capacitat Taula'].join(','),
+    ['Nom', 'Nota', 'Gènere', 'Classe', 'Grup assignat', 'Capacitat grup'].join(','),
     // Dades dels alumnes
     ...csvData.map(row => [
       `"${row.studentName}"`,
@@ -58,7 +58,7 @@ export const exportDistributionToExcel = (distribucio, studentsData, plantilla) 
   
   // Full 1: Resum de la distribució
   const summaryData = [
-    ['Informació de la Distribució'],
+    ['Informació de la distribució'],
     ['Nom:', distribucio.nom_distribucio],
     ['Descripció:', distribucio.descripcio_distribucio || 'Sense descripció'],
     ['Plantilla:', plantilla.nom_plantilla],
@@ -66,8 +66,8 @@ export const exportDistributionToExcel = (distribucio, studentsData, plantilla) 
     ['Total d\'alumnes:', data.length],
     ['Classes incloses:', [...new Set(data.map(d => d.className))].join(', ')],
     [],
-    ['Resum per taula:'],
-    ['Taula', 'Alumnes assignats', 'Capacitat', 'Ocupació (%)']
+    ['Resum per grup:'],
+    ['Grup', 'Alumnes assignats', 'Capacitat', 'Ocupació (%)']
   ];
 
   // Estadístiques per taula
@@ -81,7 +81,7 @@ export const exportDistributionToExcel = (distribucio, studentsData, plantilla) 
 
   // Full 2: Detall dels alumnes
   const detailData = [
-    ['Nom Alumne', 'Nota Acadèmica', 'Gènere', 'Classe', 'Taula Assignada', 'Capacitat Taula'],
+    ['Nom', 'Nota', 'Gènere', 'Classe', 'Grup assignat', 'Capacitat grup'],
     ...data.map(row => [
       row.studentName,
       row.academicGrade,
@@ -93,10 +93,10 @@ export const exportDistributionToExcel = (distribucio, studentsData, plantilla) 
   ];
 
   const detailWS = XLSX.utils.aoa_to_sheet(detailData);
-  XLSX.utils.book_append_sheet(wb, detailWS, 'Detall Alumnes');
+  XLSX.utils.book_append_sheet(wb, detailWS, 'Detall alumnes');
 
   // Full 3: Alumnes per taula (vista diferent)
-  const byTableData = [['Organització per Taules'], []];
+  const byTableData = [['Organització per grups'], []];
   const tableGroups = groupStudentsByTable(data);
   
   Object.keys(tableGroups).sort().forEach(tableName => {
@@ -148,7 +148,7 @@ const getGenderLabel = (gender) => {
 const getTableName = (taulaId, plantilla) => {
   if (!taulaId) return 'Pool (no assignat)';
   const taula = plantilla?.taules?.find(t => t.id_taula_plantilla === taulaId);
-  return taula ? `Taula ${taula.identificador_taula_dins_plantilla}` : 'Taula desconeguda';
+  return taula ? `Grup ${taula.identificador_taula_dins_plantilla}` : 'Grup desconegut';
 };
 
 /**
@@ -207,7 +207,7 @@ export const exportDistributionSummary = (distribucio, studentsData, plantilla) 
     `Plantilla: ${plantilla.nom_plantilla}`,
     `Total alumnes: ${data.length}`,
     '',
-    'ESTADÍSTIQUES PER TAULA:',
+    'ESTADÍSTIQUES PER GRUP:',
     ...tableStats.map(stat => 
       `${stat.tableName}: ${stat.studentsCount}/${stat.capacity} (${stat.occupancyPercentage}%)`
     ),
