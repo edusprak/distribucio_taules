@@ -98,10 +98,10 @@ function ClassroomArrangementPageContent() {
 
 
     const [loading, setLoading] = useState({ global: true, plantilles: true, distribucions: false, autoAssign: false, classes: true });
-    const [error, setError] = useState({ global: null, plantilla: null, distribucio: null, autoAssign: null, classes: null });
-    
-    const [isProcessingAutoAssign, setIsProcessingAutoAssign] = useState(false);
+    const [error, setError] = useState({ global: null, plantilla: null, distribucio: null, autoAssign: null, classes: null });    const [isProcessingAutoAssign, setIsProcessingAutoAssign] = useState(false);
     const [balanceByGender, setBalanceByGender] = useState(false);
+    const [usePreferences, setUsePreferences] = useState(true);
+    const [lastAssignmentMetrics, setLastAssignmentMetrics] = useState(null);
     
     const [isConfirmDeleteDistribucioOpen, setIsConfirmDeleteDistribucioOpen] = useState(false);
     const [distribucioToDelete, setDistribucioToDelete] = useState(null);
@@ -392,13 +392,13 @@ function ClassroomArrangementPageContent() {
             )
         );
     };
-    
-    const handleClearCurrentAssignments = () => {
+      const handleClearCurrentAssignments = () => {
         if (!activePlantilla) return;
         if (!window.confirm("Segur que vols treure tots els alumnes de les taules actuals i tornar-los al pool? Els canvis no desats es perdran.")) return;
         setDisplayedStudents(prevStudents => 
             prevStudents.map(s => ({ ...s, taula_plantilla_id: null }))
         );
+        setLastAssignmentMetrics(null); // Netejar mètriques
         toast.info("Totes les assignacions actuals netejades (dels alumnes mostrats).");
     };
 
@@ -436,18 +436,18 @@ function ClassroomArrangementPageContent() {
                 preferences: s.preferences, // <-- AFEGIT
                 current_table_id: s.taula_plantilla_id 
             }));
-        const payloadStudents = [...alreadyAssignedStudentsPayload, ...studentsForAutoAssignPayload];
-
-        try {
+        const payloadStudents = [...alreadyAssignedStudentsPayload, ...studentsForAutoAssignPayload];        try {
             const payload = {
                 plantilla_id: activePlantilla.id_plantilla,
                 students: payloadStudents,
                 balanceByGender: balanceByGender,
+                usePreferences: usePreferences,
             };
-            const response = await axios.post(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001/api'}/assignments/auto-assign`, payload);
-            if (response.data.success) {
+            const response = await axios.post(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001/api'}/assignments/auto-assign`, payload);            if (response.data.success) {
                 const assignments = response.data.proposedAssignments || [];
                 const warnings = response.data.warnings || [];
+                const metrics = response.data.metrics || {};
+                
                 if (assignments.length === 0) {
                     toast.warn("L'algorisme no ha generat noves assignacions per als alumnes del pool.");
                 } else {
@@ -457,9 +457,20 @@ function ClassroomArrangementPageContent() {
                         currentDisplayedStudents = currentDisplayedStudents.map(s =>
                             s.id === proposal.studentId ? { ...s, taula_plantilla_id: proposal.tableId } : s
                         );
-                    });
-                    setDisplayedStudents(currentDisplayedStudents);
-                    toast.success(`${assignments.length} assignacions automàtiques aplicades directament. Desa la distribució per persistir els canvis.`);
+                    });                    setDisplayedStudents(currentDisplayedStudents);
+                    
+                    // Guardar mètriques per mostrar
+                    setLastAssignmentMetrics(metrics);
+                    
+                    // Missatge de success amb mètriques de preferències
+                    let successMessage = `${assignments.length} assignacions automàtiques aplicades directament.`;
+                    if (usePreferences && metrics.totalStudentsWithPreferences > 0) {
+                        successMessage += ` Preferències satisfetes: ${metrics.studentsWithSatisfiedPreferences}/${metrics.totalStudentsWithPreferences} (${metrics.preferencesSatisfactionRate}%).`;
+                    }
+                    successMessage += " Desa la distribució per persistir els canvis.";
+                    
+                    toast.success(successMessage);
+                    
                     // Mostra avisos de preferències/restriccions si n'hi ha
                     if (warnings.length > 0) {
                         warnings.forEach(w => toast.info(w));
@@ -594,10 +605,14 @@ function ClassroomArrangementPageContent() {
             {error.classes && <Alert severity="error" sx={{ mt: 1 }}>{error.classes}</Alert>}
           </Box>
         )}
-        {/* 4. Controls d'assignació */}
-        {activePlantilla && (
+        {/* 4. Controls d'assignació */}        {activePlantilla && (
           <Box>
             <Typography variant="subtitle1" fontWeight={600} mb={1}>3. Modifica la distribució</Typography>
+            <FormControlLabel
+              control={<Checkbox checked={usePreferences} onChange={e => setUsePreferences(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
+              label={<Typography variant="body2">Usar preferències dels alumnes</Typography>}
+              sx={{ mb: 1 }}
+            />
             <FormControlLabel
               control={<Checkbox checked={balanceByGender} onChange={e => setBalanceByGender(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
               label={<Typography variant="body2">Intentar equilibrar per gènere</Typography>}
@@ -623,9 +638,41 @@ function ClassroomArrangementPageContent() {
               disabled={loading.global || displayedStudents.every(s => s.taula_plantilla_id === null) || selectedFilterClasses.length === 0}
               sx={{ mb: 1 }}
             >
-              Desassignar tots els alumnes (del filtre actual)
-            </Button>
+              Desassignar tots els alumnes (del filtre actual)            </Button>
             {error.autoAssign && <Alert severity="error" sx={{ mt: 1 }}>{error.autoAssign}</Alert>}
+            
+            {/* Mètriques de l'última assignació */}
+            {lastAssignmentMetrics && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="subtitle2" fontWeight={600} mb={1}>📊 Últimes mètriques d'assignació</Typography>
+                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                  <strong>Alumnes assignats:</strong> {lastAssignmentMetrics.totalStudentsAssigned}
+                </Typography>
+                {usePreferences && lastAssignmentMetrics.totalStudentsWithPreferences > 0 && (
+                  <>
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>
+                      <strong>Alumnes amb preferències:</strong> {lastAssignmentMetrics.totalStudentsWithPreferences}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 0.5 }}>
+                      <strong>Preferències satisfetes:</strong> {lastAssignmentMetrics.studentsWithSatisfiedPreferences}/{lastAssignmentMetrics.totalStudentsWithPreferences}
+                    </Typography>
+                    <Typography variant="body2" sx={{ 
+                      color: lastAssignmentMetrics.preferencesSatisfactionRate >= 80 ? 'success.main' : 
+                             lastAssignmentMetrics.preferencesSatisfactionRate >= 60 ? 'warning.main' : 'error.main',
+                      fontWeight: 600
+                    }}>
+                      <strong>Taxa d'èxit:</strong> {lastAssignmentMetrics.preferencesSatisfactionRate}%
+                    </Typography>
+                  </>
+                )}
+                {!usePreferences && (
+                  <Typography variant="body2" color="text.secondary">
+                    Preferències desactivades - Només equilibri acadèmic i de gènere
+                  </Typography>
+                )}
+              </Box>
+            )}
+            
             {/* {isApplyingProposal && <Box display="flex" alignItems="center" justifyContent="center" py={2}><CircularProgress size={24} /></Box>} */}
           </Box>
         )}
