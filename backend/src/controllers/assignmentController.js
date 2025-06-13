@@ -2,7 +2,7 @@
 const db = require('../db'); // El necessitarem per obtenir les taules de la plantilla
 
 const autoAssignStudents = async (req, res) => {
-    const { students: studentsFromFrontend, plantilla_id, balanceByGender } = req.body;
+    const { students: studentsFromFrontend, plantilla_id, balanceByGender, usePreferences = true } = req.body;
 
     if (!studentsFromFrontend || !Array.isArray(studentsFromFrontend) || plantilla_id === undefined) {
         return res.status(400).json({
@@ -129,32 +129,32 @@ const autoAssignStudents = async (req, res) => {
             const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.academic_grade));
             const overallAverageGrade = studentsWithValidGrades.length > 0
                 ? studentsWithValidGrades.reduce((sum, s) => sum + s.academic_grade, 0) / studentsWithValidGrades.length
-                : null;            // ========== FUNCIONS AUXILIARS ==========
-
-            // Funció per calcular score d'un alumne en una taula
+                : null;            // ========== FUNCIONS AUXILIARS ==========            // Funció per calcular score d'un alumne en una taula
             const calculateTableScore = (student, table) => {
                 let score = 0;
-                  // Preferències: el més important (només per a taules amb preferits)
-                // Student té preferència per seure amb algun alumne a la taula
-                const hasPreferredByStudentInTable = table.students_assigned.some(
-                    assigned => student.preferences && student.preferences.includes(assigned.id)
-                );
                 
-                // Alumnes a la taula que tenen preferència per seure amb student
-                const studentsInTablePreferringThis = table.students_assigned.filter(
-                    assigned => assigned.preferences && assigned.preferences.includes(student.id)
-                ).length;
-                
-                if (hasPreferredByStudentInTable) {
-                    score += 10; // Bonus molt alt per tenir algú que l'alumne prefereix
-                }
-                
-                // Bonus addicional si alumnes de la taula prefereixen aquest alumne
-                if (studentsInTablePreferringThis > 0) {
-                    score += studentsInTablePreferringThis * 5; // Bonus per cada alumne que prefereix a aquest
+                // PRIORITAT 1: Preferències (només si usePreferences està activat)
+                if (usePreferences && student.preferences && student.preferences.length > 0) {
+                    const hasPreferredByStudentInTable = table.students_assigned.some(
+                        assigned => student.preferences.includes(assigned.id)
+                    );
+                    
+                    // Bonus MASSIU si té almenys un preferit (objectiu principal)
+                    if (hasPreferredByStudentInTable) {
+                        score += 1000; // Bonus enorme per complir "almenys un preferit"
+                    }
+                    
+                    // També bonus si algú a la taula prefereix aquest alumne
+                    const studentsInTablePreferringThis = table.students_assigned.filter(
+                        assigned => assigned.preferences && assigned.preferences.includes(student.id)
+                    ).length;
+                    
+                    if (studentsInTablePreferringThis > 0) {
+                        score += 100; // Bonus secondary per ser preferit
+                    }
                 }
 
-                // Nota acadèmica: equilibri
+                // PRIORITAT 2: Equilibri acadèmic
                 const studentGrade = student.academic_grade;
                 if (overallAverageGrade !== null && !isNaN(studentGrade)) {
                     const studentsWithGrades = table.students_assigned.filter(s => !isNaN(s.academic_grade));
@@ -162,15 +162,11 @@ const autoAssignStudents = async (req, res) => {
                     const newCount = studentsWithGrades.length + 1;
                     const newAvg = newCount > 0 ? newGradeSum / newCount : overallAverageGrade;
                     
-                    // Penalitzem diferències amb la mitjana global
-                    score -= Math.abs(newAvg - overallAverageGrade) * 1.5;
+                    // Penalització per diferència amb la mitjana global
+                    score -= Math.abs(newAvg - overallAverageGrade) * 5;
                 }
 
-                // Capacitat: premiem taules amb més ocupants però sense omplir
-                const remainingAfter = table.capacity - (table.current_occupancy + 1);
-                score += remainingAfter * 0.3; // Volem una distribució més equilibrada
-                
-                // Gènere: equilibri
+                // PRIORITAT 3: Equilibri de gènere (si activat)
                 if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
                     let maleCount = table.current_male_count;
                     let femaleCount = table.current_female_count;
@@ -181,14 +177,18 @@ const autoAssignStudents = async (req, res) => {
                     const totalStudents = table.current_occupancy + 1;
                     if (totalStudents > 1) {
                         const genderDiff = Math.abs(maleCount - femaleCount);
-                        score -= genderDiff * 0.8; // Penalitzem desequilibris de gènere
+                        score -= genderDiff * 3; // Penalització per desequilibri
                         
-                        // Bonus si aconseguim un equilibri perfecte o gairebé perfecte
+                        // Bonus per equilibri perfecte
                         if (genderDiff <= 1) {
-                            score += 0.5;
+                            score += 2;
                         }
                     }
                 }
+
+                // PRIORITAT 4: Distribució equilibrada de capacitat
+                const remainingAfter = table.capacity - (table.current_occupancy + 1);
+                score += remainingAfter * 0.5;
 
                 return score;
             };
@@ -237,319 +237,212 @@ const autoAssignStudents = async (req, res) => {
                 
                 // Marquem l'alumne com assignat
                 student.assigned = true;
-            };
-
-            // ========== FASE 1: TRACTAMENT DE PREFERÈNCIES MÚTUES ==========
-              // Identifiquem parells d'alumnes amb preferències mútues
-            const mutualPairs = [];
+            };            // ========== ALGORITME SIMPLIFICAT AMB NOVES PRIORITATS ==========
             
-            // Busquem totes les preferències recíproques
-            for (let i = 0; i < studentsToAssign.length; i++) {
-                const studentA = studentsToAssign[i];
-                if (!studentA.preferences || studentA.preferences.length === 0) continue;
+            // FASE 1: Preferències mútues (només si usePreferences està activat)
+            if (usePreferences) {
+                // Identifiquem parells d'alumnes amb preferències mútues
+                const mutualPairs = [];
                 
-                for (let j = 0; j < studentsToAssign.length; j++) {
-                    // Saltem la comparació amb el mateix alumne
-                    if (i === j) continue;
+                // Busquem totes les preferències recíproques
+                for (let i = 0; i < studentsToAssign.length; i++) {
+                    const studentA = studentsToAssign[i];
+                    if (!studentA.preferences || studentA.preferences.length === 0) continue;
                     
-                    const studentB = studentsToAssign[j];
-                    if (!studentB.preferences || studentB.preferences.length === 0) continue;
-                    
-                    // Si hi ha preferència recíproca i sense restriccions entre ells
-                    if (studentA.preferences.includes(studentB.id) && 
-                        studentB.preferences.includes(studentA.id) &&
-                        !studentA.restrictions?.includes(studentB.id) &&
-                        !studentB.restrictions?.includes(studentA.id)) {
-                            
-                        mutualPairs.push({
-                            studentA,
-                            studentB,
-                            avgGrade: ((studentA.academic_grade || 0) + (studentB.academic_grade || 0)) / 2
-                        });
+                    for (let j = i + 1; j < studentsToAssign.length; j++) {
+                        const studentB = studentsToAssign[j];
+                        if (!studentB.preferences || studentB.preferences.length === 0) continue;
+                        
+                        // Si hi ha preferència recíproca i sense restriccions entre ells
+                        if (studentA.preferences.includes(studentB.id) && 
+                            studentB.preferences.includes(studentA.id) &&
+                            !studentA.restrictions?.includes(studentB.id) &&
+                            !studentB.restrictions?.includes(studentA.id)) {
+                                
+                            mutualPairs.push({
+                                studentA,
+                                studentB,
+                                avgGrade: ((studentA.academic_grade || 0) + (studentB.academic_grade || 0)) / 2
+                            });
+                        }
                     }
                 }
+                
+                // Ordenem per nota mitjana descendent
+                mutualPairs.sort((a, b) => b.avgGrade - a.avgGrade);
+                
+                // Assignem els parells amb preferències mútues
+                for (const pair of mutualPairs) {
+                    const { studentA, studentB } = pair;
+                    
+                    // Saltarem si alguna dels alumnes ja està assignat
+                    if (studentA.assigned || studentB.assigned) continue;
+                    
+                    // Busquem la millor taula per aquest parell
+                    let bestTable = null;
+                    let bestScore = -Infinity;
+                    
+                    for (const table of tablesForThisAttempt) {
+                        // Necessitem espai per ambdós alumnes
+                        if (table.current_occupancy + 2 > table.capacity) continue;
+                        
+                        // Comprovem restriccions d'ambdós alumnes
+                        if (!canAssignToTable(studentA, table) || !canAssignToTable(studentB, table)) {
+                            continue;
+                        }
+                        
+                        // Calculem score combinat
+                        const scoreA = calculateTableScore(studentA, table);
+                        const scoreB = calculateTableScore(studentB, table);
+                        const combinedScore = scoreA + scoreB + 500; // Bonus per preferència mútua
+                        
+                        if (combinedScore > bestScore) {
+                            bestScore = combinedScore;
+                            bestTable = table;
+                        }
+                    }
+                    
+                    if (bestTable) {
+                        // Assignem ambdós alumnes junts
+                        assignStudentToTable(studentA, bestTable);
+                        assignStudentToTable(studentB, bestTable);
+                    }
+                }
+            }            
+            // FASE 2: Assignació individual optimitzada
+            const remainingStudents = studentsToAssign.filter(s => !s.assigned);
+            
+            // Ordenem alumnes per prioritat de satisfacció
+            if (usePreferences) {
+                // Si usen preferències: alumnes amb menys preferències primer (més difícils)
+                remainingStudents.sort((a, b) => {
+                    const prefsA = a.preferences ? a.preferences.length : 0;
+                    const prefsB = b.preferences ? b.preferences.length : 0;
+                    
+                    if (prefsA !== prefsB) return prefsA - prefsB;
+                    return (b.academic_grade || 0) - (a.academic_grade || 0);
+                });
+            } else {
+                // Si no usen preferències: ordenem per nota per equilibrar millor
+                remainingStudents.sort((a, b) => (b.academic_grade || 0) - (a.academic_grade || 0));
             }
             
-            // Ordenem per nota mitjana descendent
-            mutualPairs.sort((a, b) => b.avgGrade - a.avgGrade);
-            
-            // Assignem els parells amb preferències mútues
-            for (const pair of mutualPairs) {
-                const { studentA, studentB } = pair;
+            // Assignem cada alumne a la millor taula possible
+            for (const student of remainingStudents) {
+                if (student.assigned) continue;
                 
-                // Saltarem si alguna dels alumnes ja està assignat (podria haver estat assignat en una iteració anterior)
-                if (studentA.assigned || studentB.assigned) continue;
-                
-                // Busquem la millor taula per aquest parell
                 let bestTable = null;
                 let bestScore = -Infinity;
+                let foundTableWithPreference = false;
+                let foundRestrictionVsPreference = false;
                 
-                for (const table of tablesForThisAttempt) {
-                    // Necessitem espai per ambdós alumnes
-                    if (table.current_occupancy + 2 > table.capacity) continue;
+                // Barregem taules per aleatorietat
+                const shuffledTables = shuffleArray(tablesForThisAttempt);
+                
+                for (const table of shuffledTables) {
+                    if (table.current_occupancy >= table.capacity) continue;
                     
-                    // Comprovem restriccions d'ambdós alumnes amb els ja assignats a la taula
-                    if (!canAssignToTable(studentA, table) || !canAssignToTable(studentB, table)) {
+                    // Verificar restriccions (prioritat absoluta)
+                    if (!canAssignToTable(student, table)) {
+                        // Comprovar si hi ha conflicte preferència-restricció
+                        if (usePreferences && student.preferences && student.preferences.length > 0) {
+                            for (const assignedStudent of table.students_assigned) {
+                                if (student.restrictions?.includes(assignedStudent.id) && 
+                                    student.preferences.includes(assignedStudent.id)) {
+                                    foundRestrictionVsPreference = true;
+                                }
+                            }
+                        }
                         continue;
                     }
                     
-                    // Calculem un score combinat
-                    // Creem una còpia temporal per avaluar el score després d'afegir studentA
-                    const tempTable = {...table};
-                    tempTable.students_assigned = [...table.students_assigned, studentA];
-                    tempTable.current_occupancy = table.current_occupancy + 1;
-                    tempTable.current_male_count = table.current_male_count + (studentA.gender === 'male' ? 1 : 0);
-                    tempTable.current_female_count = table.current_female_count + (studentA.gender === 'female' ? 1 : 0);
+                    // Verificar si té preferències a aquesta taula (si les preferències estan activades)
+                    if (usePreferences && student.preferences && student.preferences.length > 0) {
+                        const hasPreferredInTable = table.students_assigned.some(assigned => 
+                            student.preferences.includes(assigned.id)
+                        );
+                        if (hasPreferredInTable) {
+                            foundTableWithPreference = true;
+                        }
+                    }
                     
-                    // Ara calculem l'score per ambdós alumnes
-                    const scoreA = calculateTableScore(studentA, table);
-                    const scoreB = calculateTableScore(studentB, tempTable); // Amb studentA ja afegit
+                    // Calcular score per aquesta taula
+                    const score = calculateTableScore(student, table);
                     
-                    // Afegim un bonus per preferència mútua
-                    const combinedScore = scoreA + scoreB + 5.0; 
-                    
-                    if (combinedScore > bestScore) {
-                        bestScore = combinedScore;
+                    if (score > bestScore) {
+                        bestScore = score;
                         bestTable = table;
                     }
                 }
                 
+                // Assignar a la millor taula troada
                 if (bestTable) {
-                    // Assignem ambdós alumnes junts
-                    assignStudentToTable(studentA, bestTable);
-                    assignStudentToTable(studentB, bestTable);
-                }
-            }
-              // ========== FASE 2: ALUMNES AMB POQUES PREFERÈNCIES ==========
-            
-            // Ordenem els alumnes per prioritat:
-            // 1. Alumnes amb menys preferències primer (més difícils de satisfer)
-            // 2. A igual nombre de preferències, millor nota primer
-            const remainingStudents = studentsToAssign.filter(s => !s.assigned);
-            remainingStudents.sort((a, b) => {
-                const prefsA = a.preferences ? a.preferences.length : 0;
-                const prefsB = b.preferences ? b.preferences.length : 0;
-                
-                if (prefsA !== prefsB) return prefsA - prefsB;
-                return (b.academic_grade || 0) - (a.academic_grade || 0);
-            });
-            
-            // Per cada alumne restant, intentem trobar una taula amb al menys un preferit
-            for (const student of remainingStudents) {
-                // Saltarem si ja està assignat (podria haver passat en una iteració anterior)
-                if (student.assigned) continue;
-                
-                // Variables per trobar la millor taula
-                let bestTableForStudent = null;
-                let bestTableScore = -Infinity;
-                let foundTableWithPreference = false;
-                let foundRestrictionVsPreference = false;
-                
-                // Candidats amb preferits
-                const preferenceTableCandidates = [];
-                
-                // Barregem les taules per més aleatorietat
-                const shuffledTables = shuffleArray(tablesForThisAttempt);
-                
-                // Primer pas: busquem taules candidates
-                for (const table of shuffledTables) {
-                    if (table.current_occupancy >= table.capacity) continue;
-
-                    // Comprovem restriccions (tenen prioritat sobre preferències)
-                    let hasRestrictionConflict = false;
-                    if (student.restrictions && student.restrictions.length > 0) {
-                        for (const assignedStudent of table.students_assigned) {
-                            if (student.restrictions.includes(assignedStudent.id)) {
-                                hasRestrictionConflict = true;
-                                // Si també és preferit, marquem-ho per warning
-                                if (student.preferences && student.preferences.includes(assignedStudent.id)) {
-                                    foundRestrictionVsPreference = true;
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    if (hasRestrictionConflict) continue;                    // Comprova si hi ha algun preferit a la taula (alumne té preferència per seure amb algú)
-                    let hasPreferredByStudent = false;
-                    if (student.preferences && student.preferences.length > 0) {
-                        for (const assignedStudent of table.students_assigned) {
-                            if (student.preferences.includes(assignedStudent.id)) {
-                                hasPreferredByStudent = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Comprova si l'estudiant és preferit per algú a la taula
-                    let studentPreferredByTable = false;
-                    for (const assignedStudent of table.students_assigned) {
-                        if (assignedStudent.preferences && assignedStudent.preferences.includes(student.id)) {
-                            studentPreferredByTable = true;
-                            break;
-                        }
-                    }
-                    
-                    // Si hi ha una preferència en qualsevol direcció, afegim la taula a candidats
-                    if (hasPreferredByStudent || studentPreferredByTable) {
-                        preferenceTableCandidates.push(table);
-                        foundTableWithPreference = true;
-                    }
-
-                    // Calcula score normal per totes les taules vàlides
-                    let currentScore = 0;
-                    const studentGrade = student.academic_grade;
-
-                    if (overallAverageGrade !== null && !isNaN(studentGrade)) {
-                        const tempStudentsWithGradeInTable = table.students_assigned.filter(s => !isNaN(s.academic_grade));
-                        const newSumGrades = tempStudentsWithGradeInTable.reduce((acc, s) => acc + s.academic_grade, 0) + studentGrade;
-                        const newOccupancyWithGrade = tempStudentsWithGradeInTable.length + 1;
-                        const newAvgGrade = newOccupancyWithGrade > 0 ? newSumGrades / newOccupancyWithGrade : overallAverageGrade;
-                        currentScore -= Math.abs(newAvgGrade - overallAverageGrade) * 1.0;
-                    }
-
-                    const remainingCapacityAfterAssign = (table.capacity - (table.current_occupancy + 1));
-                    currentScore += remainingCapacityAfterAssign * 0.2;
-
-                    if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
-                        let tempMaleCount = table.current_male_count;
-                        let tempFemaleCount = table.current_female_count;
-                        if (student.gender === 'male') tempMaleCount++;
-                        else if (student.gender === 'female') tempFemaleCount++;
-
-                        const newTotalStudents = table.current_occupancy + 1;
-                        if (newTotalStudents > 0) {
-                            const genderDifference = Math.abs(tempMaleCount - tempFemaleCount);
-                            currentScore -= genderDifference * 0.5;
-                            if (genderDifference <= 1 && newTotalStudents > 1) currentScore += 0.3;
-                        }
-                    }
-
-                    // Si aquesta és millor que la que teníem, actualitzem
-                    if (currentScore > bestTableScore) {
-                        bestTableScore = currentScore;
-                        bestTableForStudent = table;
-                    }
-                }
-
-                // Si hi ha taules amb preferit, prioritzem la millor d'elles
-                if (preferenceTableCandidates.length > 0) {
-                    // Escull la taula amb millor score entre les candidates amb preferits
-                    let bestPrefTable = null;
-                    let bestPrefScore = -Infinity;
-                    
-                    for (const table of preferenceTableCandidates) {                        // El score base per les taules amb preferits és molt més alt
-                        let score = 10.0; // Bonus base per tenir alguna preferència
-                        const studentGrade = student.academic_grade;
-                        
-                        // Bonus si l'alumne té preferències a la taula
-                        let preferredByStudentCount = 0;
-                        if (student.preferences && student.preferences.length > 0) {
-                            for (const assignedStudent of table.students_assigned) {
-                                if (student.preferences.includes(assignedStudent.id)) {
-                                    preferredByStudentCount++;
-                                }
-                            }
-                        }
-                        
-                        // Bonus si l'alumne és preferit per estudiants a la taula
-                        let preferringStudentCount = 0;
-                        for (const assignedStudent of table.students_assigned) {
-                            if (assignedStudent.preferences && assignedStudent.preferences.includes(student.id)) {
-                                preferringStudentCount++;
-                            }
-                        }
-                        
-                        if (preferredByStudentCount > 0) {
-                            score += preferredByStudentCount * 5.0; // Bonus per cada preferit
-                        }
-                        
-                        if (preferringStudentCount > 0) {
-                            score += preferringStudentCount * 2.5; // Bonus per cada estudiant que prefereix aquest
-                        }
-                        
-                        // Factores acadèmics i de gènere tenen menys pes en aquest cas
-                        if (overallAverageGrade !== null && !isNaN(studentGrade)) {
-                            const tempStudentsWithGradeInTable = table.students_assigned.filter(s => !isNaN(s.academic_grade));
-                            const newSumGrades = tempStudentsWithGradeInTable.reduce((acc, s) => acc + s.academic_grade, 0) + studentGrade;
-                            const newOccupancyWithGrade = tempStudentsWithGradeInTable.length + 1;
-                            const newAvgGrade = newOccupancyWithGrade > 0 ? newSumGrades / newOccupancyWithGrade : overallAverageGrade;
-                            score -= Math.abs(newAvgGrade - overallAverageGrade) * 0.5; // Menys penalització
-                        }
-                        
-                        const remainingCapacityAfterAssign = (table.capacity - (table.current_occupancy + 1));
-                        score += remainingCapacityAfterAssign * 0.1;
-                        
-                        if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
-                            let tempMaleCount = table.current_male_count;
-                            let tempFemaleCount = table.current_female_count;
-                            if (student.gender === 'male') tempMaleCount++;
-                            else if (student.gender === 'female') tempFemaleCount++;
-                            const newTotalStudents = table.current_occupancy + 1;
-                            if (newTotalStudents > 0) {
-                                const genderDifference = Math.abs(tempMaleCount - tempFemaleCount);
-                                score -= genderDifference * 0.3;
-                                if (genderDifference <= 1 && newTotalStudents > 1) score += 0.2;
-                            }
-                        }
-                        
-                        if (score > bestPrefScore) {
-                            bestPrefScore = score;
-                            bestPrefTable = table;
-                        }
-                    }
-                    
-                    // Si hem trobat una taula amb preferits bona, la usem
-                    if (bestPrefTable) {
-                        bestTableForStudent = bestPrefTable;
-                    }
+                    assignStudentToTable(student, bestTable);
+                } else if (usePreferences && student.preferences && student.preferences.length > 0) {
+                    warnings.push(`No s'ha pogut trobar cap taula vàlida per l'alumne ${student.name} (ID ${student.id}) que respecti les seves restriccions.`);
                 }
                 
-                // Si no s'ha pogut assignar a una taula amb preferit, ho afegim als warnings
-                if (student.preferences && student.preferences.length > 0 && !foundTableWithPreference) {
+                // Generar warnings per preferències no satisfetes
+                if (usePreferences && student.preferences && student.preferences.length > 0 && !foundTableWithPreference && bestTable) {
                     warnings.push(`No s'ha pogut assignar l'alumne ${student.name} (ID ${student.id}) amb cap dels seus preferits.`);
                 }
-                  // Si hi ha conflicte preferit-restricció, avisa
+                
                 if (foundRestrictionVsPreference) {
                     warnings.push(`L'alumne ${student.name} (ID ${student.id}) té una restricció amb un dels seus preferits. La restricció té prioritat.`);
                 }
-                
-                // Finalment, si hem trobat una taula vàlida, assignem l'alumne
-                if (bestTableForStudent) {
-                    proposedAssignments.push({
-                        studentId: student.id,
-                        tableId: bestTableForStudent.id,
-                        studentName: student.name,
-                        tableName: bestTableForStudent.table_number
-                    });
-
-                    // Actualitzem l'estat de la taula seleccionada per a la propera iteració
-                    bestTableForStudent.students_assigned.push(student);
-                    bestTableForStudent.current_occupancy++;
-                    
-                    if (!isNaN(student.academic_grade)) {
-                        bestTableForStudent.current_sum_of_grades += student.academic_grade;
-                        const validGradesCount = bestTableForStudent.students_assigned.filter(s => !isNaN(s.academic_grade)).length;
-                        bestTableForStudent.current_avg_grade = validGradesCount > 0 
-                            ? bestTableForStudent.current_sum_of_grades / validGradesCount 
-                            : null;
-                    }
-                    
-                    if (student.gender === 'male') bestTableForStudent.current_male_count++;
-                    else if (student.gender === 'female') bestTableForStudent.current_female_count++;
-                    
-                    // Marquem l'alumne com assignat
-                    student.assigned = true;                } else if (student.preferences && student.preferences.length > 0) {
-                    // Si no s'ha pogut assignar a cap taula però té preferències, afegim un warning especial
-                    warnings.push(`No s'ha pogut trobar cap taula vàlida per l'alumne ${student.name} (ID ${student.id}) que respecti les seves restriccions.`);
-                }
-            }
+            }            
             // Comprova si la proposta és igual a alguna guardada
             foundUnique = !distribucionsGuardades.some(saved => isSameAssignment(proposedAssignments, saved));
-        }
-        if (!foundUnique) {
+        }        if (!foundUnique) {
             return res.status(409).json({ success: false, message: 'No s\'ha pogut generar una distribució diferent de les ja existents per aquesta plantilla.' });
         }
-        res.json({ success: true, proposedAssignments, warnings });
+        
+        // Generar mètriques de satisfacció per als nous objectius
+        const metrics = {
+            totalStudentsAssigned: proposedAssignments.length,
+            totalStudentsWithPreferences: 0,
+            studentsWithSatisfiedPreferences: 0,
+            preferencesSatisfactionRate: 0
+        };
+        
+        if (usePreferences) {
+            // Calcular mètriques de preferències
+            const allStudents = studentsFromFrontend;
+            const studentsWithPrefs = allStudents.filter(s => s.preferences && s.preferences.length > 0);
+            metrics.totalStudentsWithPreferences = studentsWithPrefs.length;
+            
+            let satisfiedCount = 0;
+            for (const student of studentsWithPrefs) {
+                const assignment = proposedAssignments.find(a => a.studentId === student.id);
+                if (assignment) {
+                    // Trobar companys de taula
+                    const tablemates = proposedAssignments
+                        .filter(a => a.tableId === assignment.tableId && a.studentId !== student.id)
+                        .map(a => a.studentId);
+                    
+                    // Verificar si té almenys un preferit com a company
+                    const hasPreferredTablemate = student.preferences.some(prefId => 
+                        tablemates.includes(prefId)
+                    );
+                    
+                    if (hasPreferredTablemate) {
+                        satisfiedCount++;
+                    }
+                }
+            }
+            
+            metrics.studentsWithSatisfiedPreferences = satisfiedCount;
+            metrics.preferencesSatisfactionRate = studentsWithPrefs.length > 0 
+                ? Math.round((satisfiedCount / studentsWithPrefs.length) * 100) 
+                : 100;
+        }
+        
+        res.json({ 
+            success: true, 
+            proposedAssignments, 
+            warnings,
+            metrics
+        });
     } catch (error) {
         console.error('[AutoAssign] Error en auto-assignació:', error);
         res.status(500).json({ success: false, message: 'Error intern del servidor en l\'auto-assignació.', error: error.message });
