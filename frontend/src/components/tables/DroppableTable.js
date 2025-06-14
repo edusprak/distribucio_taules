@@ -216,10 +216,10 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
                 {table.table_number} ({studentsInTable?.length || 0}/{table.capacity})
             </div>
             <div style={tableInfoStyle}>
-                Mitjana nota: {averageGrade}
+                Nota mitjana: {averageGrade}
             </div>
             <div style={tableInfoStyle}>
-                Distribució: {genderDistribution}
+                Gènere: {genderDistribution}
             </div>
             
             {/* Botons d'ordenació */}
