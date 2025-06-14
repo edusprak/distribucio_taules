@@ -81,9 +81,7 @@ const autoAssignStudents = async (req, res) => {
             if (!distribucionsMap[row.id_distribucio]) distribucionsMap[row.id_distribucio] = {};
             distribucionsMap[row.id_distribucio][row.alumne_id] = row.taula_plantilla_id;
         }
-        const distribucionsGuardades = Object.values(distribucionsMap);
-
-        // Funció per comparar assignacions
+        const distribucionsGuardades = Object.values(distribucionsMap);        // Funció per comparar assignacions (exacte)
         function isSameAssignment(proposed, saved) {
             if (proposed.length !== Object.keys(saved).length) return false;
             for (const pa of proposed) {
@@ -92,7 +90,21 @@ const autoAssignStudents = async (req, res) => {
             return true;
         }
 
-        let foundUnique = false;
+        // Funció per comparar assignacions (amb tolerància)
+        function isSimilarAssignment(proposed, saved, toleranceRate = 0.8) {
+            const totalAssignments = proposed.length;
+            if (totalAssignments === 0) return true;
+            
+            let matches = 0;
+            for (const pa of proposed) {
+                if (saved[pa.studentId] === pa.tableId) {
+                    matches++;
+                }
+            }
+            
+            const similarityRate = matches / totalAssignments;
+            return similarityRate >= toleranceRate;
+        }let foundUnique = false;
         let proposedAssignments = [];
         let warnings = [];
         const MAX_ATTEMPTS = 25; // Augmentem intents per al nou algorisme
@@ -106,15 +118,43 @@ const autoAssignStudents = async (req, res) => {
             proposedAssignments = [];
             warnings = [];
             
+            // ========== ESTRATÈGIA HÍBRIDA PROGRESSIVA ==========
+            // Intent 1-3: Algorisme determinista (màxima qualitat)
+            // Intent 4-10: Introducció progressiva d'aleatorietat
+            // Intent 11+: Relaxació gradual de criteris secundaris
+            
+            const strategyPhase = attempt <= 3 ? 'deterministic' : 
+                                attempt <= 10 ? 'progressive' : 'relaxed';
+            
+            const variabilityConfig = {
+                phase: strategyPhase,
+                randomnessLevel: strategyPhase === 'deterministic' ? 0 : 
+                               strategyPhase === 'progressive' ? (attempt - 3) * 0.1 : 0.3,
+                toleranceGradeBalance: strategyPhase === 'deterministic' ? 1.0 : 
+                                     strategyPhase === 'progressive' ? 0.8 : 0.6,
+                toleranceGenderBalance: strategyPhase === 'deterministic' ? 1.0 : 
+                                      strategyPhase === 'progressive' ? 0.8 : 0.6,
+                minPreferenceSatisfaction: 0.8, // Sempre mantenim preferències altes
+                allowSimilar: strategyPhase !== 'deterministic'
+            };
+            
+            console.log(`\n🎯 Intent ${attempt} - Estratègia: ${strategyPhase} (aleatorietat: ${variabilityConfig.randomnessLevel})`);
+            
             // Per cada intent, fem una còpia neta de les taules i els alumnes
             const tablesForThisAttempt = tablesFromPlantilla.map(table => ({
                 ...table,
                 students_assigned: [...table.students_assigned],
             }));
             
-            const studentsToAssign = allStudents
+            let studentsToAssign = allStudents
                 .filter(s => s.current_table_id == null)
                 .map(s => ({...s}));
+
+            // Introduir aleatorietat en l'ordre dels alumnes segons la fase
+            if (variabilityConfig.randomnessLevel > 0) {
+                console.log(`🎲 Aplicant aleatorietat (nivell: ${variabilityConfig.randomnessLevel})`);
+                studentsToAssign = shuffleArray(studentsToAssign);
+            }
 
             // Calculem estadístiques globals
             const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.academic_grade));
@@ -125,7 +165,7 @@ const autoAssignStudents = async (req, res) => {
             const totalMaleStudents = studentsToAssign.filter(s => s.gender === 'male').length;
             const totalFemaleStudents = studentsToAssign.filter(s => s.gender === 'female').length;
 
-            // ========== NOU ALGORISME MILLORAT ==========
+            // ========== ALGORISME MILLORAT AMB VARIABILITAT ==========
             
             try {
                 let result;
@@ -134,14 +174,16 @@ const autoAssignStudents = async (req, res) => {
                         overallAverageGrade,
                         balanceByGender,
                         totalMaleStudents,
-                        totalFemaleStudents
+                        totalFemaleStudents,
+                        variabilityConfig // AFEGIT: Configuració de variabilitat
                     });
                 } else {
                     result = await assignWithoutPreferences(studentsToAssign, tablesForThisAttempt, {
                         overallAverageGrade,
                         balanceByGender,
                         totalMaleStudents,
-                        totalFemaleStudents
+                        totalFemaleStudents,
+                        variabilityConfig // AFEGIT: Configuració de variabilitat
                     });
                 }
                 
@@ -157,8 +199,15 @@ const autoAssignStudents = async (req, res) => {
                 continue;
             }
             
-            // Comprova si la proposta és igual a alguna guardada
-            foundUnique = !distribucionsGuardades.some(saved => isSameAssignment(proposedAssignments, saved));
+            // Verificació de unicitat més flexible segons la fase
+            if (variabilityConfig.allowSimilar) {
+                foundUnique = !distribucionsGuardades.some(saved => isSimilarAssignment(proposedAssignments, saved, 0.8));
+                if (foundUnique) {
+                    console.log(`✅ Distribució suficientment diferent trobada (similaritat < 80%)`);
+                }
+            } else {
+                foundUnique = !distribucionsGuardades.some(saved => isSameAssignment(proposedAssignments, saved));
+            }
         }
 
         if (!foundUnique) {
@@ -360,20 +409,21 @@ function assignStudentToTable(student, table, assignments) {
 }
 
 /**
- * Calcula el score d'un alumne per una taula específica
+ * Calcula el score d'un alumne per una taula específica amb variabilitat opcional
  */
 function calculateTableScore(student, table, options) {
-    const { overallAverageGrade, balanceByGender, usePreferences } = options;
+    const { overallAverageGrade, balanceByGender, usePreferences, variabilityConfig } = options;
     let score = 0;
-      // PRIORITAT 1: Preferències (només si usePreferences està activat)
+    
+    // PRIORITAT 1: Preferències (sempre mantenim aquesta prioritat alta)
     if (usePreferences && student.preferences && student.preferences.length > 0) {
         const hasPreferredByStudentInTable = table.students_assigned.some(
             assigned => student.preferences.includes(assigned.id)
         );
         
-        // Bonus MOLT gran per tenir un preferit - augmentem significativament
+        // Bonus MOLT gran per tenir un preferit
         if (hasPreferredByStudentInTable) {
-            score += 1000; // Tornem a augmentar per donar més prioritat
+            score += 1000;
         }
         
         // Bonus si algú a la taula prefereix aquest alumne
@@ -382,11 +432,11 @@ function calculateTableScore(student, table, options) {
         ).length;
         
         if (studentsInTablePreferringThis > 0) {
-            score += 200; // També augmentem aquest bonus
+            score += 200;
         }
     }
 
-    // PRIORITAT 2: Equilibri acadèmic
+    // PRIORITAT 2: Equilibri acadèmic (amb tolerància configurable)
     const studentGrade = student.academic_grade;
     if (overallAverageGrade !== null && !isNaN(studentGrade)) {
         const studentsWithGrades = table.students_assigned.filter(s => !isNaN(s.academic_grade));
@@ -394,12 +444,14 @@ function calculateTableScore(student, table, options) {
         const newCount = studentsWithGrades.length + 1;
         const newAvg = newCount > 0 ? newGradeSum / newCount : overallAverageGrade;
         
-        // Penalització per diferència amb la mitjana global
+        // Aplicar tolerància configurable
+        const toleranceGrade = variabilityConfig?.toleranceGradeBalance || 1.0;
         const gradeDiff = Math.abs(newAvg - overallAverageGrade);
-        score -= gradeDiff * 10; // Augmentem la importància de l'equilibri de notes
+        const gradeWeight = toleranceGrade * 10;
+        score -= gradeDiff * gradeWeight;
     }
 
-    // PRIORITAT 3: Equilibri de gènere (si activat)
+    // PRIORITAT 3: Equilibri de gènere (amb tolerància configurable)
     if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
         let maleCount = table.current_male_count;
         let femaleCount = table.current_female_count;
@@ -409,11 +461,13 @@ function calculateTableScore(student, table, options) {
         
         const totalStudents = table.current_occupancy + 1;
         if (totalStudents > 1) {
+            const toleranceGender = variabilityConfig?.toleranceGenderBalance || 1.0;
             const genderDiff = Math.abs(maleCount - femaleCount);
-            score -= genderDiff * 5; // Augmentem la penalització per desequilibri de gènere
+            const genderWeight = toleranceGender * 5;
+            score -= genderDiff * genderWeight;
             
-            // Bonus per equilibri perfecte
-            if (genderDiff <= 1) {
+            // Bonus per equilibri perfecte (només si tolerància és alta)
+            if (genderDiff <= 1 && toleranceGender >= 0.8) {
                 score += 5;
             }
         }
@@ -421,7 +475,18 @@ function calculateTableScore(student, table, options) {
 
     // PRIORITAT 4: Distribució equilibrada de capacitat
     const remainingAfter = table.capacity - (table.current_occupancy + 1);
-    score += remainingAfter * 1; // Lleugerament més important
+    score += remainingAfter * 1;
+
+    // AFEGIR VARIABILITAT: Component aleatori segons configuració
+    if (variabilityConfig?.randomnessLevel > 0) {
+        const randomComponent = (Math.random() - 0.5) * 2 * variabilityConfig.randomnessLevel * Math.abs(score) * 0.1;
+        score += randomComponent;
+        
+        // Log ocasional per debuggar
+        if (Math.random() < 0.1) {
+            console.log(`🎲 Score amb variabilitat: ${score.toFixed(2)} (component aleatori: ${randomComponent.toFixed(2)})`);
+        }
+    }
 
     return score;
 }
@@ -508,8 +573,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
     const studentsPreferredByOthers = new Set(allPreferences);
     
     console.log(`\n🎯 Alumnes preferits per altres: [${Array.from(studentsPreferredByOthers).join(', ')}]`);
-    
-    // Ordenem per prioritat avançada
+      // Ordenem per prioritat avançada amb variabilitat opcional
     remainingStudents.sort((a, b) => {
         const validTablesA = tables.filter(t => canAssignToTable(a, t)).length;
         const validTablesB = tables.filter(t => canAssignToTable(b, t)).length;
@@ -520,13 +584,19 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         const isPreferredA = studentsPreferredByOthers.has(a.id);
         const isPreferredB = studentsPreferredByOthers.has(b.id);
         
-        // PRIORITAT 1: Alumnes amb preferències van absolutament primer
+        // PRIORITAT 1: Alumnes amb preferències van absolutament primer (sempre)
         if (hasPrefsA && !hasPrefsB) return -1;
         if (!hasPrefsA && hasPrefsB) return 1;
         
         // PRIORITAT 2: Entre alumnes amb preferències, menys opcions primer
         if (hasPrefsA && hasPrefsB) {
             if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+            
+            // Introduir aleatorietat en empats si estem en mode variable
+            if (a.preferences.length === b.preferences.length && 
+                options.variabilityConfig?.randomnessLevel > 0) {
+                return Math.random() - 0.5;
+            }
             return a.preferences.length - b.preferences.length;
         }
         
@@ -537,10 +607,21 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         // PRIORITAT 4: Entre alumnes preferits, menys opcions primer
         if (isPreferredA && isPreferredB) {
             if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+            
+            // Introduir aleatorietat en empats
+            if (validTablesA === validTablesB && 
+                options.variabilityConfig?.randomnessLevel > 0) {
+                return Math.random() - 0.5;
+            }
         }
         
         // PRIORITAT 5: Per la resta, menys opcions primer
         if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+        
+        // Introduir aleatorietat en empats finals
+        if (options.variabilityConfig?.randomnessLevel > 0) {
+            return Math.random() - 0.5;
+        }
         
         return 0;
     });
@@ -550,9 +631,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         if (student.assigned) continue;
         
         const isPreferred = studentsPreferredByOthers.has(student.id);
-        
-        console.log(`\n=== Processant ${student.name} (ID: ${student.id}) ${isPreferred ? '⭐ (PREFERIT PER ALTRES)' : ''} ===`);
-        
+                
         let bestTable = null;
         let bestScore = -Infinity;
         let foundTableWithSomeoneWhoPrefersThem = false;
@@ -588,17 +667,50 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
                 console.log(`❌ No hi ha ningú que el prefereixi a cap taula disponible`);
             }
         }
-        
-        // Si no té estratègia especial o no ha trobat ningú, usa estratègia normal
+          // Si no té estratègia especial o no ha trobat ningú, usa estratègia normal/variable
         if (!bestTable) {
+            const tableScores = [];
+            
+            // Calcular scores per totes les taules vàlides
             for (const table of tables) {
                 if (!canAssignToTable(student, table)) continue;
                 
                 const score = calculateTableScore(student, table, options);
+                tableScores.push({ table, score });
+            }
+            
+            // Ordenar per score descendent
+            tableScores.sort((a, b) => b.score - a.score);
+            
+            // Selecció segons configuració de variabilitat
+            if (options.variabilityConfig?.randomnessLevel > 0 && tableScores.length > 1) {
+                // MODE PROBABILÍSTIC: Escollir entre les millors opcions amb probabilitat
+                const threshold = options.variabilityConfig.randomnessLevel * 0.3; // 0-0.09 rang típic
+                const topScore = tableScores[0].score;
                 
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestTable = table;
+                // Filtrar taules amb scores dins del rang acceptable
+                const acceptableTables = tableScores.filter(ts => 
+                    Math.abs(ts.score - topScore) <= Math.abs(topScore) * threshold || 
+                    ts.score >= topScore - 50 // Tolerància absoluta
+                );
+                
+                if (acceptableTables.length > 1) {
+                    // Selecció probabilística entre bones opcions
+                    const randomIndex = Math.floor(Math.random() * acceptableTables.length);
+                    bestTable = acceptableTables[randomIndex].table;
+                    bestScore = acceptableTables[randomIndex].score;
+                    
+                    console.log(`🎲 Selecció probabilística: ${acceptableTables.length} opcions, escollida ${bestTable.table_number} (score: ${bestScore.toFixed(2)})`);
+                } else {
+                    // Si només hi ha una bona opció, usar-la
+                    bestTable = tableScores[0].table;
+                    bestScore = tableScores[0].score;
+                }
+            } else {
+                // MODE DETERMINISTA: Escollir sempre la millor
+                if (tableScores.length > 0) {
+                    bestTable = tableScores[0].table;
+                    bestScore = tableScores[0].score;
                 }
             }
         }
@@ -611,22 +723,19 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         } else {
             console.log(`❌ ERROR: No s'ha pogut assignar ${student.name} a cap taula`);
             warnings.push(`No s'ha pogut assignar l'alumne ${student.name} (ID ${student.id}) a cap taula vàlida.`);
-        }
-    }
-    
-    return { assignments, warnings };
+        }    }
     
     return { assignments, warnings };
 }
 
 /**
- * Algorisme d'assignació sense preferències (més simple)
+ * Algorisme d'assignació sense preferències (amb variabilitat opcional)
  */
 async function assignWithoutPreferences(studentsToAssign, tables, options) {
     const assignments = [];
     const warnings = [];
     
-    // Ordenem alumnes per nota per equilibrar millor
+    // Ordenem alumnes amb aleatorietat opcional
     studentsToAssign.sort((a, b) => {
         // Primer, alumnes amb menys opcions vàlides
         const validTablesA = tables.filter(t => canAssignToTable(a, t)).length;
@@ -634,25 +743,59 @@ async function assignWithoutPreferences(studentsToAssign, tables, options) {
         
         if (validTablesA !== validTablesB) return validTablesA - validTablesB;
         
-        // Després, per equilibri de notes
+        // Introduir aleatorietat en empats si estem en mode variable
+        if (options.variabilityConfig?.randomnessLevel > 0) {
+            return Math.random() - 0.5;
+        }
+        
+        // Després, per equilibri de notes (determinista)
         return (b.academic_grade || 0) - (a.academic_grade || 0);
     });
     
-    // Assignació simple pero efectiva
+    // Assignació amb selecció probabilística opcional
     for (const student of studentsToAssign) {
         if (student.assigned) continue;
         
-        let bestTable = null;
-        let bestScore = -Infinity;
+        const tableScores = [];
         
+        // Calcular scores per totes les taules vàlides
         for (const table of tables) {
             if (!canAssignToTable(student, table)) continue;
             
             const score = calculateTableScore(student, table, { ...options, usePreferences: false });
-            
-            if (score > bestScore) {
-                bestScore = score;
-                bestTable = table;
+            tableScores.push({ table, score });
+        }
+        
+        // Ordenar per score descendent
+        tableScores.sort((a, b) => b.score - a.score);
+        
+        let bestTable = null;
+        let bestScore = -Infinity;
+        
+        if (tableScores.length > 0) {
+            // Selecció segons configuració de variabilitat
+            if (options.variabilityConfig?.randomnessLevel > 0 && tableScores.length > 1) {
+                // MODE PROBABILÍSTIC
+                const threshold = options.variabilityConfig.randomnessLevel * 0.2;
+                const topScore = tableScores[0].score;
+                
+                const acceptableTables = tableScores.filter(ts => 
+                    Math.abs(ts.score - topScore) <= Math.abs(topScore) * threshold ||
+                    ts.score >= topScore - 30
+                );
+                
+                if (acceptableTables.length > 1) {
+                    const randomIndex = Math.floor(Math.random() * acceptableTables.length);
+                    bestTable = acceptableTables[randomIndex].table;
+                    bestScore = acceptableTables[randomIndex].score;
+                } else {
+                    bestTable = tableScores[0].table;
+                    bestScore = tableScores[0].score;
+                }
+            } else {
+                // MODE DETERMINISTA
+                bestTable = tableScores[0].table;
+                bestScore = tableScores[0].score;
             }
         }
         
