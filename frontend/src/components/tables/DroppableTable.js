@@ -114,9 +114,7 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
             isOver: !!monitor.isOver(),
             canDrop: !!monitor.canDrop(),
         }),
-    }), [table, studentsInTable, onDropStudent, draggedStudentInfo]);
-
-    // Calcula la mitjana de les notes acadèmiques dels alumnes a aquesta taula
+    }), [table, studentsInTable, onDropStudent, draggedStudentInfo]);    // Calcula la mitjana de les notes acadèmiques dels alumnes a aquesta taula
     const calculateAverageGrade = () => {
         if (!studentsInTable || studentsInTable.length === 0) return 'N/A';
 
@@ -128,6 +126,38 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
         
         const average = validGrades.reduce((acc, grade) => acc + grade, 0) / validGrades.length;
         return average.toFixed(2);
+    };
+
+    // Calcula la distribució per gènere dels alumnes a aquesta taula
+    const calculateGenderDistribution = () => {
+        if (!studentsInTable || studentsInTable.length === 0) return 'Sense alumnes';
+
+        const genderCounts = {
+            male: 0,
+            female: 0,
+            other: 0,
+            prefer_not_to_say: 0,
+            null: 0 // Per casos on no hi ha gènere especificat
+        };
+
+        studentsInTable.forEach(student => {
+            const gender = student.gender || null;
+            if (genderCounts.hasOwnProperty(gender)) {
+                genderCounts[gender]++;
+            } else {
+                genderCounts.null++;
+            }
+        });
+
+        // Generar text compacte només amb els gèneres presents
+        const genderTexts = [];
+        if (genderCounts.male > 0) genderTexts.push(`♂${genderCounts.male}`);
+        if (genderCounts.female > 0) genderTexts.push(`♀${genderCounts.female}`);
+        if (genderCounts.other > 0) genderTexts.push(`⚬${genderCounts.other}`);
+        if (genderCounts.prefer_not_to_say > 0) genderTexts.push(`-${genderCounts.prefer_not_to_say}`);
+        if (genderCounts.null > 0) genderTexts.push(`?${genderCounts.null}`);
+
+        return genderTexts.length > 0 ? genderTexts.join(' ') : 'Sense dades';
     };
 
     // Ordenar els estudiants
@@ -164,9 +194,8 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
             setSortBy(attribute);
             setSortOrder('asc');
         }
-    };
-
-    const averageGrade = calculateAverageGrade();
+    };    const averageGrade = calculateAverageGrade();
+    const genderDistribution = calculateGenderDistribution();
     const sortedStudents = sortStudents(studentsInTable);
 
     // Estil per al botó seleccionat
@@ -183,12 +212,14 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
     };
 
     return (
-        <div ref={drop} style={tableStyle(isOver, canDrop)}>
-            <div style={tableHeaderStyle}>
+        <div ref={drop} style={tableStyle(isOver, canDrop)}>            <div style={tableHeaderStyle}>
                 {table.table_number} ({studentsInTable?.length || 0}/{table.capacity})
             </div>
             <div style={tableInfoStyle}>
                 Mitjana nota: {averageGrade}
+            </div>
+            <div style={tableInfoStyle}>
+                Distribució: {genderDistribution}
             </div>
             
             {/* Botons d'ordenació */}
