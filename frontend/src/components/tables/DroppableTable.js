@@ -6,16 +6,18 @@ import DraggableStudentCard from '../students/DraggableStudentCard'; //
 import { useDragState } from '../../contexts/DragContext'; //
 
 const tableStyle = (isOver, canDrop) => ({
-  width: '220px',
-  minHeight: '150px', // Una mica més d'alçada per fer lloc
-  border: `2px dashed ${isOver && canDrop ? 'green' : (isOver && !canDrop ? 'red' : '#b0c4de')}`, // Canvia la vora si s'arrossega per sobre
+  width: '420px',
+  minWidth: '360px',
+  maxWidth: '480px',
+  minHeight: '150px',
+  border: `2px dashed ${isOver && canDrop ? 'green' : (isOver && !canDrop ? 'red' : '#b0c4de')}`,
   padding: '15px',
-  backgroundColor: canDrop && isOver ? '#e6ffe6' : (isOver && !canDrop ? '#ffe6e6' : 'white'), // Canvia el fons
+  backgroundColor: canDrop && isOver ? '#e6ffe6' : (isOver && !canDrop ? '#ffe6e6' : 'white'),
   borderRadius: '8px',
   display: 'flex',
   flexDirection: 'column',
   boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-  transition: 'background-color 0.2s ease, border-color 0.2s ease', // Transició suau
+  transition: 'background-color 0.2s ease, border-color 0.2s ease',
 });
 
 const tableHeaderStyle = {
@@ -67,6 +69,16 @@ const activeSortButtonStyle = {
     backgroundColor: '#e8f0fd',
     fontWeight: 'bold',
     border: '1px solid #b0c4de',
+};
+
+const studentsContainerStyle = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    marginTop: '8px',
+    minHeight: '40px',
 };
 
 function DroppableTable({ table, studentsInTable, onDropStudent }) { 
@@ -246,19 +258,20 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
                     >
                         Gènere {getSortArrow('gender')}
                     </button>
-                </div>
-            )}
+                </div>            )}
             
             {sortedStudents && sortedStudents.length > 0 ? (
-                sortedStudents.map(student => (
-                    <DraggableStudentCard 
-                        key={student.id} 
-                        student={{ ...student, originalTableId: table.id }} // Passem l'ID actual de la taula de plantilla
-                        // onDragEnd es gestiona a ClassroomArrangementPage o StudentPoolDropZone
-                    />
-                ))
-            ) : (
-                !isOver && <p style={dropZoneInfoStyle}>Taula buida</p>
+                <div style={studentsContainerStyle}>
+                    {sortedStudents.map(student => (
+                        <DraggableStudentCard 
+                            key={student.id} 
+                            student={{ ...student, originalTableId: table.id }}
+                        />
+                    ))}
+                </div>            ) : (
+                <div style={{ ...studentsContainerStyle, justifyContent: 'center', alignItems: 'center' }}>
+                    {!isOver && <p style={dropZoneInfoStyle}>Taula buida</p>}
+                </div>
             )}
             {isOver && canDrop && <p style={dropZoneInfoStyle}>Deixa anar aquí per assignar</p>}
             {isOver && !canDrop && <p style={{...dropZoneInfoStyle, color: 'red'}}>Acció no permesa!</p>}

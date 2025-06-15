@@ -51,9 +51,9 @@ const DragDropArea = styled(Box)(({ theme }) => ({
 }));
 
 const PoolZone = styled(Paper)(({ theme }) => ({
-  width: 280,
-  minWidth: 220,
-  maxWidth: 320,
+  width: 300,
+  minWidth: 260,
+  maxWidth: 340,
   padding: theme.spacing(1),
   background: theme.palette.background.paper,
   borderRadius: theme.shape.borderRadius,
@@ -72,8 +72,9 @@ const TablesZone = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2),
   display: 'flex',
   flexWrap: 'wrap',
-  gap: theme.spacing(2),
+  gap: theme.spacing(3),
   alignContent: 'flex-start',
+  justifyContent: 'flex-start',
   height: '100%',
   overflowY: 'auto',
 }));
@@ -103,6 +104,9 @@ function ClassroomArrangementPageContent() {
     const [usePreferences, setUsePreferences] = useState(true);
     const [lastAssignmentMetrics, setLastAssignmentMetrics] = useState(null);
     
+    // Nova funcionalitat: Mètriques dinàmiques
+    const [currentMetrics, setCurrentMetrics] = useState(null);
+
     const [isConfirmDeleteDistribucioOpen, setIsConfirmDeleteDistribucioOpen] = useState(false);
     const [distribucioToDelete, setDistribucioToDelete] = useState(null);
 
@@ -254,6 +258,8 @@ function ClassroomArrangementPageContent() {
                     };
                 });
                 setDisplayedStudents(newDisplayedStudents);
+                // Netejar mètriques de l'assignació automàtica en carregar una distribució
+                setLastAssignmentMetrics(null);
                 toast.success(`Distribució "${distribucio.nom_distribucio}" carregada.`);
             } else {
                 throw new Error(response.message || "No s'ha pogut carregar la distribució.");
@@ -372,25 +378,43 @@ function ClassroomArrangementPageContent() {
                     toast.error(`Conflicte: ${studentToMove.name} no pot seure amb ${restrictedWithName}.`);
                     return;
                 }
-            }
-        }
+            }        }
+        
+        // Guardar l'estat anterior per comprovar preferències trencades
+        const previousState = [...displayedStudents];
+        
         setDisplayedStudents(prevStudents =>
             prevStudents.map(s =>
                 s.id === studentId ? { ...s, taula_plantilla_id: targetTablePlantillaId } : s
             )
         );
+        
+        // Comprovar preferències trencades després del moviment
+        checkBrokenPreferences(studentId, targetTablePlantillaId, previousState);
+        
+        // Netejar mètriques de l'assignació automàtica quan es mou manualment un alumne
+        setLastAssignmentMetrics(null);
     };
 
     const handleUnassignStudent = async (studentId, fromTablePlantillaId) => {
-        const studentToUnassign = displayedStudents.find(s => s.id === studentId);
-        if (!studentToUnassign || studentToUnassign.taula_plantilla_id !== fromTablePlantillaId) {
+        const studentToUnassign = displayedStudents.find(s => s.id === studentId);        if (!studentToUnassign || studentToUnassign.taula_plantilla_id !== fromTablePlantillaId) {
             return; 
         }
+        
+        // Guardar l'estat anterior per comprovar preferències trencades
+        const previousState = [...displayedStudents];
+        
         setDisplayedStudents(prevStudents =>
             prevStudents.map(s =>
                 s.id === studentId ? { ...s, taula_plantilla_id: null } : s
             )
         );
+        
+        // Comprovar preferències trencades després de moure al pool
+        checkBrokenPreferences(studentId, null, previousState);
+        
+        // Netejar mètriques de l'assignació automàtica quan es mou manualment un alumne
+        setLastAssignmentMetrics(null);
     };
       const handleClearCurrentAssignments = () => {
         if (!activePlantilla) return;
@@ -487,6 +511,190 @@ function ClassroomArrangementPageContent() {
             setIsProcessingAutoAssign(false);
         }
     };
+
+    // Funció per calcular mètriques dinàmiques basant-se en l'estat actual
+    const calculateCurrentMetrics = useCallback(() => {
+        if (!activePlantilla || !displayedStudents.length) {
+            setCurrentMetrics(null);
+            return;
+        }
+
+        // Alumnes assignats (exclou els que estan al pool)
+        const assignedStudents = displayedStudents.filter(s => s.taula_plantilla_id !== null);
+        
+        if (assignedStudents.length === 0) {
+            setCurrentMetrics(null);
+            return;
+        }
+
+        const metrics = {
+            totalStudentsAssigned: assignedStudents.length,
+            totalStudentsWithPreferences: 0,
+            studentsWithSatisfiedPreferences: 0,
+            preferencesSatisfactionRate: 0,
+            averageGradeBalance: 0,
+            genderBalance: null
+        };
+
+        // Calcular mètriques de preferències si usePreferences està activat
+        if (usePreferences) {
+            const studentsWithPrefs = assignedStudents.filter(s => s.preferences && s.preferences.length > 0);
+            metrics.totalStudentsWithPreferences = studentsWithPrefs.length;
+            
+            let satisfiedCount = 0;
+            for (const student of studentsWithPrefs) {
+                // Trobar companys de taula
+                const tablemates = assignedStudents
+                    .filter(s => s.taula_plantilla_id === student.taula_plantilla_id && s.id !== student.id)
+                    .map(s => s.id);
+                
+                // Verificar si té almenys un preferit com a company
+                const hasPreferredTablemate = student.preferences.some(prefId => 
+                    tablemates.includes(prefId)
+                );
+                
+                if (hasPreferredTablemate) {
+                    satisfiedCount++;
+                }
+            }
+            
+            metrics.studentsWithSatisfiedPreferences = satisfiedCount;
+            metrics.preferencesSatisfactionRate = studentsWithPrefs.length > 0 
+                ? Math.round((satisfiedCount / studentsWithPrefs.length) * 100) 
+                : 100;
+        }
+
+        // Calcular mètriques d'equilibri de notes
+        const tablesByPlantillaId = {};
+        assignedStudents.forEach(student => {
+            const tableId = student.taula_plantilla_id;
+            if (!tablesByPlantillaId[tableId]) {
+                tablesByPlantillaId[tableId] = [];
+            }
+            tablesByPlantillaId[tableId].push(student);
+        });
+
+        const tableAverages = Object.values(tablesByPlantillaId)
+            .map(studentsInTable => {
+                const validGrades = studentsInTable
+                    .map(s => parseFloat(s.academic_grade))
+                    .filter(grade => !isNaN(grade));
+                
+                return validGrades.length > 0 
+                    ? validGrades.reduce((sum, grade) => sum + grade, 0) / validGrades.length
+                    : null;
+            })
+            .filter(avg => avg !== null);
+
+        if (tableAverages.length > 1) {
+            const avgOfAverages = tableAverages.reduce((sum, avg) => sum + avg, 0) / tableAverages.length;
+            const variance = tableAverages.reduce((sum, avg) => sum + Math.pow(avg - avgOfAverages, 2), 0) / tableAverages.length;
+            metrics.averageGradeBalance = Math.round((1 / (1 + variance)) * 100);
+        }
+
+        // Calcular mètriques d'equilibri de gènere si balanceByGender està activat
+        if (balanceByGender) {
+            const genderRatios = Object.values(tablesByPlantillaId)
+                .map(studentsInTable => {
+                    const maleCount = studentsInTable.filter(s => s.gender === 'male').length;
+                    const femaleCount = studentsInTable.filter(s => s.gender === 'female').length;
+                    const total = maleCount + femaleCount;
+                    return total > 0 ? Math.abs(maleCount - femaleCount) / total : 0;
+                });
+            
+            if (genderRatios.length > 0) {
+                const avgGenderImbalance = genderRatios.reduce((sum, ratio) => sum + ratio, 0) / genderRatios.length;
+                metrics.genderBalance = Math.round((1 - avgGenderImbalance) * 100);
+            }
+        }
+
+        setCurrentMetrics(metrics);
+    }, [activePlantilla, displayedStudents, usePreferences, balanceByGender]);
+
+    // Efecte per recalcular mètriques quan canviï l'estat dels estudiants
+    useEffect(() => {
+        calculateCurrentMetrics();
+    }, [calculateCurrentMetrics]);
+
+    // Funció per detectar i notificar preferències trencades
+    const checkBrokenPreferences = useCallback((studentId, newTableId, previousState) => {
+        if (!usePreferences) return;
+
+        const studentMoving = previousState.find(s => s.id === studentId);
+        if (!studentMoving || !studentMoving.preferences || studentMoving.preferences.length === 0) return;
+
+        const oldTableId = studentMoving.taula_plantilla_id;
+        
+        // Comprovar si l'alumne que es mou perd preferències
+        let brokenPreferencesForMovingStudent = [];
+        if (oldTableId !== null) {
+            // Alumnes que quedaran a l'antiga taula
+            const studentsRemainingInOldTable = previousState
+                .filter(s => s.taula_plantilla_id === oldTableId && s.id !== studentId)
+                .map(s => s.id);
+            
+            // Preferències que es trenquen per l'alumne que es mou
+            const preferencesLostByMoving = studentMoving.preferences.filter(prefId => 
+                studentsRemainingInOldTable.includes(prefId)
+            );
+            
+            if (preferencesLostByMoving.length > 0) {
+                // Comprovar si l'alumne encara té altres preferències satisfetes a la nova taula
+                const studentsInNewTable = newTableId ? 
+                    previousState.filter(s => s.taula_plantilla_id === newTableId).map(s => s.id) : [];
+                
+                const preferencesKeptOrGained = studentMoving.preferences.filter(prefId => 
+                    studentsInNewTable.includes(prefId)
+                );
+                
+                // Si l'alumne perd totes les preferències
+                if (preferencesKeptOrGained.length === 0) {
+                    preferencesLostByMoving.forEach(prefId => {
+                        const preferredStudent = allStudents.find(s => s.id === prefId);
+                        if (preferredStudent) {
+                            brokenPreferencesForMovingStudent.push(preferredStudent.name);
+                        }
+                    });
+                }
+            }
+        }
+
+        // Comprovar si altres alumnes perden les seves preferències amb l'alumne que es mou
+        let brokenPreferencesForOthers = [];
+        if (oldTableId !== null) {
+            const studentsInOldTable = previousState.filter(s => 
+                s.taula_plantilla_id === oldTableId && 
+                s.id !== studentId &&
+                s.preferences && 
+                s.preferences.includes(studentId)
+            );
+            
+            studentsInOldTable.forEach(student => {
+                // Comprovar si aquest alumne encara té altres preferències satisfetes
+                const otherTablemates = previousState
+                    .filter(s => s.taula_plantilla_id === oldTableId && s.id !== studentId && s.id !== student.id)
+                    .map(s => s.id);
+                
+                const otherSatisfiedPreferences = student.preferences.filter(prefId => 
+                    prefId !== studentId && otherTablemates.includes(prefId)
+                );
+                
+                // Si aquest alumne perd la seva única preferència satisfeta
+                if (otherSatisfiedPreferences.length === 0) {
+                    brokenPreferencesForOthers.push(student.name);
+                }
+            });
+        }
+
+        // Mostrar notificacions
+        if (brokenPreferencesForMovingStudent.length > 0) {
+            toast.warning(`⚠️ ${studentMoving.name} ja no té cap preferència satisfeta (abans estava amb: ${brokenPreferencesForMovingStudent.join(', ')})`);
+        }
+        
+        if (brokenPreferencesForOthers.length > 0) {
+            toast.warning(`⚠️ ${brokenPreferencesForOthers.join(', ')} ${brokenPreferencesForOthers.length === 1 ? 'ja no té' : 'ja no tenen'} cap preferència satisfeta (${studentMoving.name} era la seva preferència)`);
+        }
+    }, [usePreferences, allStudents]);
 
     // Render
     if (loading.global && !activePlantilla && !loading.classes) {
@@ -640,30 +848,46 @@ function ClassroomArrangementPageContent() {
             >
               Desassignar tots els alumnes (del filtre actual)            </Button>
             {error.autoAssign && <Alert severity="error" sx={{ mt: 1 }}>{error.autoAssign}</Alert>}
-            
-            {/* Mètriques de l'última assignació */}
-            {lastAssignmentMetrics && (
+              {/* Mètriques dinàmiques de la distribució actual */}
+            {(currentMetrics || lastAssignmentMetrics) && (
               <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                <Typography variant="subtitle2" fontWeight={600} mb={1}>📊 Últimes mètriques d'assignació</Typography>
-                <Typography variant="body2" sx={{ mb: 0.5 }}>
-                  <strong>Alumnes assignats:</strong> {lastAssignmentMetrics.totalStudentsAssigned}
+                <Typography variant="subtitle2" fontWeight={600} mb={1}>
+                  📊 {currentMetrics ? 'Mètriques de la distribució actual' : 'Últimes mètriques d\'assignació'}
                 </Typography>
-                {usePreferences && lastAssignmentMetrics.totalStudentsWithPreferences > 0 && (
+                
+                <Typography variant="body2" sx={{ mb: 0.5 }}>
+                  <strong>Alumnes assignats:</strong> {(currentMetrics || lastAssignmentMetrics).totalStudentsAssigned}
+                </Typography>
+                                
+                {/* Mètriques d'equilibri de gènere */}
+                {(currentMetrics || lastAssignmentMetrics).genderBalance !== null && (
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    <strong>Equilibri de gènere:</strong> {(currentMetrics || lastAssignmentMetrics).genderBalance}%
+                  </Typography>
+                )}
+                
+                {/* Mètriques de preferències */}
+                {usePreferences && (currentMetrics || lastAssignmentMetrics).totalStudentsWithPreferences > 0 && (
                   <>
                     <Typography variant="body2" sx={{ mb: 0.5 }}>
-                      <strong>Alumnes amb preferències:</strong> {lastAssignmentMetrics.totalStudentsWithPreferences}
+                      <strong>Alumnes amb preferències:</strong> {(currentMetrics || lastAssignmentMetrics).totalStudentsWithPreferences}
                     </Typography>
                     <Typography variant="body2" sx={{ mb: 0.5 }}>
-                      <strong>Preferències satisfetes:</strong> {lastAssignmentMetrics.studentsWithSatisfiedPreferences}/{lastAssignmentMetrics.totalStudentsWithPreferences}
+                      <strong>Preferències satisfetes:</strong> {(currentMetrics || lastAssignmentMetrics).studentsWithSatisfiedPreferences}/{(currentMetrics || lastAssignmentMetrics).totalStudentsWithPreferences}
                     </Typography>
                     <Typography variant="body2" sx={{ 
-                      color: lastAssignmentMetrics.preferencesSatisfactionRate >= 80 ? 'success.main' : 
-                             lastAssignmentMetrics.preferencesSatisfactionRate >= 60 ? 'warning.main' : 'error.main',
+                      color: (currentMetrics || lastAssignmentMetrics).preferencesSatisfactionRate >= 80 ? 'success.main' : 
+                             (currentMetrics || lastAssignmentMetrics).preferencesSatisfactionRate >= 60 ? 'warning.main' : 'error.main',
                       fontWeight: 600
                     }}>
-                      <strong>Taxa d'èxit:</strong> {lastAssignmentMetrics.preferencesSatisfactionRate}%
+                      <strong>Taxa d'èxit:</strong> {(currentMetrics || lastAssignmentMetrics).preferencesSatisfactionRate}%
                     </Typography>
                   </>
+                )}
+                {usePreferences && (currentMetrics || lastAssignmentMetrics).totalStudentsWithPreferences === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    Cap alumne té preferències definides
+                  </Typography>
                 )}
                 {!usePreferences && (
                   <Typography variant="body2" color="text.secondary">

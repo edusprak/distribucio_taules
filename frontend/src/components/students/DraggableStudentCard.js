@@ -33,18 +33,25 @@ const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGr
   } else {
     backgroundColor = getGradeBackgroundColor(academicGrade); // Usar color basat en la nota
   }
-  
-  return {
-    padding: '8px 12px',
-    margin: '5px 0',
+    return {
+    padding: '6px 8px',
+    margin: '0',
     backgroundColor,
     border: `1px solid ${isRestricted ? 'red' : (isBeingDraggedItself ? 'blue' : '#ddd')}`,
     borderRadius: '4px',
     cursor: 'move',
     opacity: isDragging ? 0.4 : (isRestricted && !isBeingDraggedItself ? 0.6 : 1),
-    fontSize: '0.9em',
+    fontSize: '0.8em',
+    lineHeight: '1.2',
     boxShadow: isDragging ? '0 4px 8px rgba(0,0,0,0.2)' : '0 1px 2px rgba(0,0,0,0.1)',
     transition: 'background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease',
+    minWidth: '80px',
+    maxWidth: '140px',
+    flexGrow: 1,
+    flexShrink: 0,
+    textAlign: 'center',
+    wordWrap: 'break-word',
+    hyphens: 'auto',
   };
 };
 
@@ -89,7 +96,10 @@ function DraggableStudentCard({ student }) {
         }
     }    return (
         <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student.academic_grade)}> 
-            {student.name} (Nota: {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(2) : 'N/A'})
+            <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{student.name}</div>
+            <div style={{ fontSize: '0.7em', opacity: 0.8 }}>
+                {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
+            </div>
         </div>
     );
 }

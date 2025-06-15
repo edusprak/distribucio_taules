@@ -28,6 +28,15 @@ const poolHeaderStyle = {
     paddingBottom: '10px'
 };
 
+const poolStudentsContainerStyle = {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '6px',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    minHeight: '60px',
+};
+
 const dropInfoStyle = {
     textAlign: 'center',
     fontStyle: 'italic',
@@ -59,7 +68,9 @@ function StudentPoolDropZone({ onDropToPool, children, unassignedStudentsCount }
       <h3 style={poolHeaderStyle}>
         Alumnes no assignats ({unassignedStudentsCount})
       </h3>
-      {children}
+      <div style={poolStudentsContainerStyle}>
+        {children}
+      </div>
       {isOver && canDrop && <p style={dropInfoStyle}>Deixa anar aquí per desassignar</p>}
       {isOver && !canDrop && <p style={{...dropInfoStyle, color: 'red'}}>Només alumnes de taules</p>}
     </div>
