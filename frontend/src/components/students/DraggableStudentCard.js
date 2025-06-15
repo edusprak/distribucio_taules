@@ -4,18 +4,49 @@ import { useDrag } from 'react-dnd';
 import { ItemTypes } from '../../utils/dndItemTypes'; //
 import { useDragState } from '../../contexts/DragContext'; // Assegura't que el context existeix
 
-const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself) => ({ // He canviat el nom del tercer paràmetre per claredat
-  padding: '8px 12px',
-  margin: '5px 0',
-  backgroundColor: isRestricted ? '#ffe0e0' : (isBeingDraggedItself ? '#d0e0ff' :'white'),
-  border: `1px solid ${isRestricted ? 'red' : (isBeingDraggedItself ? 'blue' : '#ddd')}`,
-  borderRadius: '4px',
-  cursor: 'move',
-  opacity: isDragging ? 0.4 : (isRestricted && !isBeingDraggedItself ? 0.6 : 1),
-  fontSize: '0.9em',
-  boxShadow: isDragging ? '0 4px 8px rgba(0,0,0,0.2)' : '0 1px 2px rgba(0,0,0,0.1)',
-  transition: 'background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease',
-});
+// Funció per obtenir el color de fons basat en la nota acadèmica
+const getGradeBackgroundColor = (academicGrade) => {
+  if (academicGrade === null || academicGrade === undefined || isNaN(academicGrade)) {
+    return 'white'; // Color per defecte si no hi ha nota
+  }
+  
+  const grade = parseFloat(academicGrade);
+  
+  if (grade >= 0 && grade <= 3) {
+    return '#e8f5e8';
+  } else if (grade >= 4 && grade <= 7) {
+    return '#fff9e6';
+  } else if (grade >= 8 && grade <= 10) {
+    return '#ffe6e6';
+  }
+  
+  return 'white'; // Color per defecte per notes fora del rang
+};
+
+const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGrade) => {
+  let backgroundColor;
+  
+  if (isRestricted) {
+    backgroundColor = '#ffe0e0'; // Manté el color de restricció
+  } else if (isBeingDraggedItself) {
+    backgroundColor = '#d0e0ff'; // Manté el color quan s'està arrossegant
+  } else {
+    backgroundColor = getGradeBackgroundColor(academicGrade); // Usar color basat en la nota
+  }
+  
+  return {
+    padding: '8px 12px',
+    margin: '5px 0',
+    backgroundColor,
+    border: `1px solid ${isRestricted ? 'red' : (isBeingDraggedItself ? 'blue' : '#ddd')}`,
+    borderRadius: '4px',
+    cursor: 'move',
+    opacity: isDragging ? 0.4 : (isRestricted && !isBeingDraggedItself ? 0.6 : 1),
+    fontSize: '0.9em',
+    boxShadow: isDragging ? '0 4px 8px rgba(0,0,0,0.2)' : '0 1px 2px rgba(0,0,0,0.1)',
+    transition: 'background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease',
+  };
+};
 
 
 function DraggableStudentCard({ student }) { 
@@ -56,10 +87,8 @@ function DraggableStudentCard({ student }) {
         if (draggedStudentInfo.restrictions.includes(student.id)) {
             isRestrictedWithDragged = true;
         }
-    }
-
-    return (
-        <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged)}> 
+    }    return (
+        <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student.academic_grade)}> 
             {student.name} (Nota: {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(2) : 'N/A'})
         </div>
     );
