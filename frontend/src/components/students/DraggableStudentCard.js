@@ -234,15 +234,18 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
     // Tancar modal
     const closeModal = () => {
         setShowModal(false);
-    };
-
-    // Obtenir noms dels alumnes des dels IDs
+    };    // Obtenir noms dels alumnes des dels IDs
     const getStudentNames = (studentIds) => {
         if (!studentIds || !allStudents) return [];
         return studentIds.map(id => {
             const student = allStudents.find(s => s.id === id);
             return student ? student.name : `ID: ${id}`;
         });
+    };    // Determinar quines preferències estan satisfetes (companys de taula)
+    const getSatisfiedPreferences = () => {
+        if (!student.preferences || !studentsInSameTable) return [];
+        const teammateIds = studentsInSameTable.map(s => s.id);
+        return student.preferences.filter(prefId => teammateIds.includes(prefId));
     };
 
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -335,18 +338,29 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                                 <div style={getGradeStyle(student.academic_grade)}>
                                     {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
                                 </div>
-                            </div>
-                            
-                            <div style={sectionStyle}>
+                            </div>                            <div style={sectionStyle}>
                                 <div style={sectionTitleStyle}>
                                     <span style={{ fontSize: '16px' }}>✅</span>
                                     <span>Preferències</span>
                                 </div>
                                 {student.preferences && student.preferences.length > 0 ? (
                                     <ul style={listStyle}>
-                                        {getStudentNames(student.preferences).map((name, index) => (
-                                            <li key={index} style={listItemStyle}>{name}</li>
-                                        ))}
+                                        {student.preferences.map((prefId, index) => {
+                                            const name = getStudentNames([prefId])[0];
+                                            const isSatisfied = getSatisfiedPreferences().includes(prefId);
+                                            
+                                            return (
+                                                <li key={index} style={{
+                                                    ...listItemStyle,
+                                                    ...(isSatisfied && {
+                                                        borderColor: '#16a34a',
+                                                        borderWidth: '2px'
+                                                    })
+                                                }}>
+                                                    {name}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 ) : (
                                     <div style={emptyStateStyle}>No té preferències</div>
