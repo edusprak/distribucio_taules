@@ -72,7 +72,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
   const [sortBy, setSortBy] = useState('name'); // Per defecte, ordenem per nom
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' o 'desc'
   const inputRef = useRef(null);
-    // Function removed because we now use Select option labels directly
+    // Function zd because we now use Select option labels directly
   
   const genderOptions = [
     { value: 'male', label: 'Masculí' },
@@ -272,9 +272,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
               'Classe',
               React.createElement('span', { style: sortIconStyle }, getSortArrow('class_name'))
             )
-          ),
-          React.createElement('th', { style: thStyle }, 'Restriccions'),
+          ),          React.createElement('th', { style: thStyle }, 'Restriccions'),
           React.createElement('th', { style: thStyle }, 'Preferències'),
+          React.createElement('th', { style: thStyle }, 'Escollit per'),
           React.createElement('th', { style: {...thStyle, width: '140px'} }, 'Accions')
         )
       ),
@@ -285,10 +285,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
           if (!student) {
             return React.createElement(
               'tr',
-              { key: `error-${index}` },
-              React.createElement(
+              { key: `error-${index}` },              React.createElement(
                 'td',
-                { colSpan: "7", style: {...tdStyle, color: 'red', padding: '10px', border: '1px dashed red'} },
+                { colSpan: "8", style: {...tdStyle, color: 'red', padding: '10px', border: '1px dashed red'} },
                 `Error: Dades de l'alumne invàlides a la posició ${index} de la llista.`
               )
             );
@@ -429,33 +428,80 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
             return student.class_name || student.nom_classe || 'No assignat';
           };          const renderRestrictionsCell = () => {
             const isEditing = editingState?.studentId === student.id && editingState.field === 'restrictions';
-            
-            if (isEditing) {
+              if (isEditing) {
+              const currentOptions = getStudentOptions(student.id);
+              const allStudentsOption = { value: 'SELECT_ALL', label: '🔲 Seleccionar tots els alumnes' };
+              const clearAllOption = { value: 'CLEAR_ALL', label: '❌ Esborrar totes les seleccions' };
+              const optionsWithActions = [allStudentsOption, clearAllOption, ...currentOptions];
+              
               return React.createElement(
                 Select,
                 {
                   isMulti: true,
-                  options: getStudentOptions(student.id),
-                  value: Array.isArray(editingValue) 
-                    ? editingValue.map(id => {
-                        const restrictedStudent = studentsForOptions.find(s => s.id === id);
-                        return restrictedStudent ? { value: restrictedStudent.id, label: restrictedStudent.name } : null;
-                      }).filter(Boolean)
-                    : [],                  onChange: selectedOptions => {
-                    const newValues = (selectedOptions || []);
-                    setEditingValue(newValues);
+                  options: optionsWithActions,                  value: Array.isArray(editingValue) 
+                    ? editingValue.filter(item => item && item.value).map(item => ({
+                        value: item.value, 
+                        label: item.label
+                      }))
+                    : [],onChange: selectedOptions => {
+                    // Comprovar si s'ha seleccionat "Seleccionar tots"
+                    const selectAllClicked = selectedOptions?.some(option => option.value === 'SELECT_ALL');
+                    const clearAllClicked = selectedOptions?.some(option => option.value === 'CLEAR_ALL');
                     
-                    // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
+                    let newValues;
+                    if (selectAllClicked) {
+                      // Seleccionar tots els alumnes menys les opcions especials
+                      newValues = currentOptions;
+                      setEditingValue(newValues);
+                    } else if (clearAllClicked) {
+                      // Esborrar totes les seleccions
+                      newValues = [];
+                      setEditingValue(newValues);
+                    } else {
+                      // Filtrar les opcions especials de la selecció
+                      newValues = (selectedOptions || []).filter(option => 
+                        option.value !== 'SELECT_ALL' && option.value !== 'CLEAR_ALL'
+                      );
+                      setEditingValue(newValues);
+                    }
                     
-                    // Aplicar canvis directament
+                    // NO aplicar canvis directament, només actualitzar l'estat local
+                    // L'usuari haurà de prémer Enter o fer clic fora per guardar
+                  },                  onBlur: () => {
+                    // Guardar quan l'usuari fa clic fora del component
+                    const restrictionIds = Array.isArray(editingValue) 
+                      ? editingValue.filter(item => item && item.value).map(item => item.value)
+                      : [];
                     const updatedStudent = { 
                       ...student, 
-                      restrictions: newValues.map(item => item.value)
+                      restrictions: restrictionIds
                     };
                     onEditStudent(updatedStudent, true);
                     setEditingState(null);
                   },
+                  onKeyDown: (e) => {
+                    if (e.key === 'Enter') {
+                      // Guardar quan l'usuari prem Enter
+                      const restrictionIds = Array.isArray(editingValue) 
+                        ? editingValue.filter(item => item && item.value).map(item => item.value)
+                        : [];
+                      const updatedStudent = { 
+                        ...student, 
+                        restrictions: restrictionIds
+                      };
+                      onEditStudent(updatedStudent, true);
+                      setEditingState(null);
+                    } else if (e.key === 'Escape') {
+                      // Cancel·lar l'edició
+                      setEditingState(null);
+                      setEditingValue('');
+                    }
+                  },
                   menuPortalTarget: document.body,
+                  closeMenuOnSelect: false, // Mantenir el menú obert després de seleccionar
+                  isSearchable: true,
+                  placeholder: "Cerca i selecciona alumnes... (Enter per guardar, Esc per cancel·lar)",
+                  noOptionsMessage: () => "No s'han trobat alumnes",
                   styles: {
                     control: base => ({
                       ...base,
@@ -463,7 +509,14 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                       borderRadius: '3px',
                       minHeight: '36px',
                     }),
-                    menuPortal: base => ({ ...base, zIndex: 9999 })
+                    menuPortal: base => ({ ...base, zIndex: 9999 }),
+                    option: (base, { data }) => ({
+                      ...base,
+                      backgroundColor: data.value === 'SELECT_ALL' ? '#e8f5e8' : 
+                                     data.value === 'CLEAR_ALL' ? '#ffe8e8' : 
+                                     base.backgroundColor,
+                      fontWeight: (data.value === 'SELECT_ALL' || data.value === 'CLEAR_ALL') ? 'bold' : 'normal'
+                    })
                   },
                   autoFocus: true
                 }
@@ -477,8 +530,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                   return restrictedStudent ? { value: restrictedStudent.id, label: restrictedStudent.name } : null;
                 }).filter(Boolean)
               : [];
-            
-            return React.createElement(
+              return React.createElement(
               Select,
               {
                 isMulti: true,
@@ -497,45 +549,93 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                   }),
                   multiValue: base => ({
                     ...base,
-                    backgroundColor: '#e8f0fd'
+                    backgroundColor: '#f8d7da', // Vermell suau
+                    border: '1px solid #dc3545'
                   }),
                   multiValueLabel: base => ({
                     ...base,
-                    fontSize: '0.8rem'
+                    fontSize: '0.8rem',
+                    color: '#721c24' // Text més fosc per millor contrast
                   })
                 }
               }
             );
           };          const renderPreferencesCell = () => {
             const isEditing = editingState?.studentId === student.id && editingState.field === 'preferences';
-            
-            if (isEditing) {
+              if (isEditing) {
+              const currentOptions = getStudentOptions(student.id);
+              const allStudentsOption = { value: 'SELECT_ALL', label: '🔲 Seleccionar tots els alumnes' };
+              const clearAllOption = { value: 'CLEAR_ALL', label: '❌ Esborrar totes les seleccions' };
+              const optionsWithActions = [allStudentsOption, clearAllOption, ...currentOptions];
+              
               return React.createElement(
                 Select,
                 {
                   isMulti: true,
-                  options: getStudentOptions(student.id),
-                  value: Array.isArray(editingValue) 
-                    ? editingValue.map(id => {
-                        const preferredStudent = studentsForOptions.find(s => s.id === id);
-                        return preferredStudent ? { value: preferredStudent.id, label: preferredStudent.name } : null;
-                      }).filter(Boolean)
-                    : [],
-                  onChange: selectedOptions => {
-                    const newValues = (selectedOptions || []);
-                    setEditingValue(newValues);
+                  options: optionsWithActions,                  value: Array.isArray(editingValue) 
+                    ? editingValue.filter(item => item && item.value).map(item => ({
+                        value: item.value, 
+                        label: item.label
+                      }))
+                    : [],onChange: selectedOptions => {
+                    // Comprovar si s'ha seleccionat "Seleccionar tots"
+                    const selectAllClicked = selectedOptions?.some(option => option.value === 'SELECT_ALL');
+                    const clearAllClicked = selectedOptions?.some(option => option.value === 'CLEAR_ALL');
                     
-                    // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
+                    let newValues;
+                    if (selectAllClicked) {
+                      // Seleccionar tots els alumnes menys les opcions especials
+                      newValues = currentOptions;
+                      setEditingValue(newValues);
+                    } else if (clearAllClicked) {
+                      // Esborrar totes les seleccions
+                      newValues = [];
+                      setEditingValue(newValues);
+                    } else {
+                      // Filtrar les opcions especials de la selecció
+                      newValues = (selectedOptions || []).filter(option => 
+                        option.value !== 'SELECT_ALL' && option.value !== 'CLEAR_ALL'
+                      );
+                      setEditingValue(newValues);
+                    }
                     
-                    // Aplicar canvis directament
+                    // NO aplicar canvis directament, només actualitzar l'estat local
+                    // L'usuari haurà de prémer Enter o fer clic fora per guardar
+                  },                  onBlur: () => {
+                    // Guardar quan l'usuari fa clic fora del component
+                    const preferenceIds = Array.isArray(editingValue) 
+                      ? editingValue.filter(item => item && item.value).map(item => item.value)
+                      : [];
                     const updatedStudent = { 
                       ...student, 
-                      preferences: newValues.map(item => item.value)
+                      preferences: preferenceIds
                     };
                     onEditStudent(updatedStudent, true);
                     setEditingState(null);
                   },
+                  onKeyDown: (e) => {
+                    if (e.key === 'Enter') {
+                      // Guardar quan l'usuari prem Enter
+                      const preferenceIds = Array.isArray(editingValue) 
+                        ? editingValue.filter(item => item && item.value).map(item => item.value)
+                        : [];
+                      const updatedStudent = { 
+                        ...student, 
+                        preferences: preferenceIds
+                      };
+                      onEditStudent(updatedStudent, true);
+                      setEditingState(null);
+                    } else if (e.key === 'Escape') {
+                      // Cancel·lar l'edició
+                      setEditingState(null);
+                      setEditingValue('');
+                    }
+                  },
                   menuPortalTarget: document.body,
+                  closeMenuOnSelect: false, // Mantenir el menú obert després de seleccionar
+                  isSearchable: true,
+                  placeholder: "Cerca i selecciona alumnes... (Enter per guardar, Esc per cancel·lar)",
+                  noOptionsMessage: () => "No s'han trobat alumnes",
                   styles: {
                     control: base => ({
                       ...base,
@@ -543,12 +643,18 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                       borderRadius: '3px',
                       minHeight: '36px',
                     }),
-                    menuPortal: base => ({ ...base, zIndex: 9999 })
-                  },
-                  autoFocus: true
+                    menuPortal: base => ({ ...base, zIndex: 9999 }),
+                    option: (base, { data }) => ({
+                      ...base,
+                      backgroundColor: data.value === 'SELECT_ALL' ? '#e8f5e8' : 
+                                     data.value === 'CLEAR_ALL' ? '#ffe8e8' : 
+                                     base.backgroundColor,
+                      fontWeight: (data.value === 'SELECT_ALL' || data.value === 'CLEAR_ALL') ? 'bold' : 'normal'
+                    })
+                  },                  autoFocus: true
                 }
               );
-            } 
+            }
             
             // Mostrem sempre com a multi-select, però en mode només lectura
             const preferenceValues = Array.isArray(student.preferences) 
@@ -574,14 +680,54 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                     border: 'none',
                     boxShadow: 'none',
                     backgroundColor: 'transparent'
-                  }),
-                  multiValue: base => ({
+                  }),                  multiValue: base => ({
                     ...base,
-                    backgroundColor: '#e8f0fd'
+                    backgroundColor: '#d4edda', // Verd suau
+                    border: '1px solid #28a745'
                   }),
                   multiValueLabel: base => ({
                     ...base,
-                    fontSize: '0.8rem'
+                    fontSize: '0.8rem',
+                    color: '#155724' // Text verd fosc per millor contrast
+                  })
+                }
+              }            );
+          };
+
+          const renderPreferredByCell = () => {
+            // Aquesta columna no és editable, només mostra qui ha escollit aquest alumne
+            const preferredByValues = Array.isArray(student.preferred_by) 
+              ? student.preferred_by.map(id => {
+                  const preferrerStudent = studentsForOptions.find(s => s.id === id);
+                  return preferrerStudent ? { value: preferrerStudent.id, label: preferrerStudent.name } : null;
+                }).filter(Boolean)
+              : [];
+              return React.createElement(
+              Select,
+              {
+                isMulti: true,
+                value: preferredByValues,
+                isDisabled: true,
+                components: {
+                  DropdownIndicator: () => null, // Amaguem la fletxa del desplegable
+                  IndicatorSeparator: () => null, // Amaguem el separador
+                  MultiValueRemove: () => null // Amaguem la creu d'esborrar
+                },
+                styles: {
+                  control: base => ({ 
+                    ...base, 
+                    border: 'none',
+                    boxShadow: 'none',
+                    backgroundColor: 'transparent'
+                  }),                  multiValue: base => ({
+                    ...base,
+                    backgroundColor: '#ffffff', // Fons blanc
+                    border: '1px solid #28a745' // Vora verda
+                  }),
+                  multiValueLabel: base => ({
+                    ...base,
+                    fontSize: '0.8rem',
+                    color: '#155724' // Text verd fosc per millor contrast
                   })
                 }
               }
@@ -679,8 +825,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                   : { ...editableCellStyle },
                 onClick: () => !editingState && startEditing(student, 'restrictions')
               },
-              renderRestrictionsCell()
-            ),
+              renderRestrictionsCell()            ),
             React.createElement(
               'td', 
               { 
@@ -690,6 +835,11 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                 onClick: () => !editingState && startEditing(student, 'preferences')
               },
               renderPreferencesCell()
+            ),
+            React.createElement(
+              'td', 
+              { style: tdStyle }, // No editable, per això no té click handler
+              renderPreferredByCell()
             ),
             React.createElement(
               'td', 

@@ -30,18 +30,26 @@ const getAllStudents = async (req, res) => {
             FROM student_preferences sp
             WHERE sp.student_id_1 = s.id
           ) AS p
-        ) AS preferences
+        ) AS preferences,
+        (
+          SELECT COALESCE(json_agg(DISTINCT pb.preferred_by_student_id), '[]'::json)
+          FROM (
+            SELECT sp.student_id_1 AS preferred_by_student_id
+            FROM student_preferences sp
+            WHERE sp.student_id_2 = s.id
+          ) AS pb
+        ) AS preferred_by
       FROM students s
       LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
       GROUP BY s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe
       ORDER BY s.name ASC;
     `;
-    const { rows } = await db.query(query);
-    const studentsWithDetails = rows.map(student => ({
+    const { rows } = await db.query(query);    const studentsWithDetails = rows.map(student => ({
         ...student,
         class_name: student.nom_classe, 
         restrictions: student.restrictions || [],
-        preferences: student.preferences || [] // NOU PER PREFERÈNCIES
+        preferences: student.preferences || [],
+        preferred_by: student.preferred_by || []
     }));
     res.json(studentsWithDetails);
   } catch (error) {
@@ -85,8 +93,16 @@ const getStudentById = async (req, res) => {
        FROM student_preferences
        WHERE student_id_1 = $1`,
       [id]
+    );    student.preferences = preferencesResult.rows.map(r => r.preferred_student_id);
+
+    // Obtenir qui ha escollit aquest alumne com a preferència
+    const preferredByResult = await db.query(
+      `SELECT student_id_1 as preferred_by_student_id
+       FROM student_preferences
+       WHERE student_id_2 = $1`,
+      [id]
     );
-    student.preferences = preferencesResult.rows.map(r => r.preferred_student_id);
+    student.preferred_by = preferredByResult.rows.map(r => r.preferred_by_student_id);
 
     res.json(student);
   } catch (error) {
