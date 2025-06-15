@@ -1,5 +1,5 @@
 // frontend/src/components/students/DraggableStudentCard.js
-import React from 'react'; // No cal useEffect aquí si no fem preview personalitzat avançat
+import React, { useState } from 'react';
 import { useDrag } from 'react-dnd';
 import { ItemTypes } from '../../utils/dndItemTypes'; //
 import { useDragState } from '../../contexts/DragContext'; // Assegura't que el context existeix
@@ -23,7 +23,7 @@ const getGradeBackgroundColor = (academicGrade) => {
   return 'white'; // Color per defecte per notes fora del rang
 };
 
-const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGrade) => {
+const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGrade, hasUnsatisfiedPreferences) => {
   let backgroundColor;
   
   if (isRestricted) {
@@ -33,11 +33,33 @@ const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGr
   } else {
     backgroundColor = getGradeBackgroundColor(academicGrade); // Usar color basat en la nota
   }
+  // Determinar color i gruix de la vora
+  let borderColor, borderWidth;
+  if (isRestricted) {
+    borderColor = 'red';
+    borderWidth = '1px';
+  } else if (isBeingDraggedItself) {
+    borderColor = 'blue';
+    borderWidth = '1px';
+  } else {
+    borderColor = '#ddd';
+    borderWidth = '1px';
+  }
+
+  // Si té preferències no satisfetes, fer la vora més gruixuda i més fosca
+  if (hasUnsatisfiedPreferences) {
+    borderWidth = '3px';
+    // Mantenir el color específic si és restricció o drag, sinó posar gris fosc
+    if (!isRestricted && !isBeingDraggedItself) {
+      borderColor = '#666';
+    }
+  }
+
     return {
     padding: '6px 8px',
     margin: '0',
     backgroundColor,
-    border: `1px solid ${isRestricted ? 'red' : (isBeingDraggedItself ? 'blue' : '#ddd')}`,
+    border: `${borderWidth} solid ${borderColor}`,
     borderRadius: '4px',
     cursor: 'move',
     opacity: isDragging ? 0.4 : (isRestricted && !isBeingDraggedItself ? 0.6 : 1),
@@ -51,14 +73,177 @@ const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGr
     flexShrink: 0,
     textAlign: 'center',
     wordWrap: 'break-word',
-    hyphens: 'auto',
-  };
+    hyphens: 'auto',  };
+};
+
+// Estils per al modal
+const modalOverlayStyle = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 10000,
+  backdropFilter: 'blur(3px)'
+};
+
+const modalContentStyle = {
+  backgroundColor: 'white',
+  borderRadius: '16px',
+  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.1)',
+  maxWidth: '550px',
+  width: '90%',
+  maxHeight: '85vh',
+  overflow: 'hidden',
+  animation: 'modalSlideIn 0.3s ease-out',
+  border: '1px solid #e0e7ff'
+};
+
+const modalHeaderStyle = {
+  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  color: 'white',
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '20px 24px',
+  borderBottom: 'none'
+};
+
+const closeButtonStyle = {
+  background: 'rgba(255, 255, 255, 0.2)',
+  border: 'none',
+  borderRadius: '50%',
+  fontSize: '20px',
+  cursor: 'pointer',
+  color: 'white',
+  padding: '0',
+  width: '32px',
+  height: '32px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'background-color 0.2s ease',
+  ':hover': {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)'
+  }
+};
+
+const modalBodyStyle = {
+  padding: '24px',
+  background: '#fafbff'
+};
+
+const sectionStyle = {
+  marginBottom: '20px',
+  lineHeight: '1.5',
+  backgroundColor: 'white',
+  padding: '16px',
+  borderRadius: '12px',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+  border: '1px solid #f0f4f8'
+};
+
+const sectionTitleStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  fontWeight: '600',
+  color: '#374151',
+  marginBottom: '8px',
+  fontSize: '14px'
+};
+
+const listStyle = {
+  margin: '8px 0',
+  paddingLeft: '0',
+  listStyle: 'none'
+};
+
+const listItemStyle = {
+  padding: '6px 12px',
+  margin: '4px 0',
+  backgroundColor: '#f8fafc',
+  borderRadius: '8px',
+  border: '1px solid #e2e8f0',
+  fontSize: '13px',
+  color: '#475569'
+};
+
+const emptyStateStyle = {
+  fontStyle: 'italic',
+  color: '#9ca3af',
+  fontSize: '13px',
+  padding: '8px 12px',
+  backgroundColor: '#f9fafb',
+  borderRadius: '8px',
+  border: '1px dashed #d1d5db'
+};
+
+const gradeStyle = {
+  display: 'inline-block',
+  padding: '4px 12px',
+  borderRadius: '20px',
+  fontWeight: '600',
+  fontSize: '13px'
+};
+
+// Funció per obtenir estil de la nota
+const getGradeStyle = (grade) => {
+  const baseStyle = { ...gradeStyle };
+  if (grade >= 8) {
+    return { ...baseStyle, backgroundColor: '#fee2e2', color: '#dc2626' };
+  } else if (grade >= 4) {
+    return { ...baseStyle, backgroundColor: '#fef3c7', color: '#d97706' };
+  } else if (grade >= 0) {
+    return { ...baseStyle, backgroundColor: '#dcfce7', color: '#16a34a' };
+  }
+  return { ...baseStyle, backgroundColor: '#f3f4f6', color: '#6b7280' };
 };
 
 
-function DraggableStudentCard({ student }) { 
-    // student ara té { id, name, academic_grade, gender, restrictions, taula_plantilla_id (si està assignat), originalTableId (per al pool) }
+function DraggableStudentCard({ student, studentsInSameTable, allStudents }) { 
+    // student ara té { id, name, academic_grade, gender, restrictions, preferences, taula_plantilla_id (si està assignat), originalTableId (per al pool) }
     const { draggedStudentInfo, startDraggingStudent, stopDraggingStudent } = useDragState();
+    const [showModal, setShowModal] = useState(false);
+
+    // Determinar si l'alumne té preferències no satisfetes
+    const hasUnsatisfiedPreferences = () => {
+        // Només per alumnes assignats a una taula
+        if (!student.taula_plantilla_id) return false;
+        
+        // Només si l'alumne té preferències
+        if (!student.preferences || student.preferences.length === 0) return false;
+        
+        // Comprovar si cap de les seves preferències està a la mateixa taula
+        const teammateIds = (studentsInSameTable || []).map(s => s.id);
+        const hasSatisfiedPreference = student.preferences.some(prefId => teammateIds.includes(prefId));
+          return !hasSatisfiedPreference;
+    };
+
+    // Gestionar el clic per mostrar informació
+    const handleClick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowModal(true);
+    };
+
+    // Tancar modal
+    const closeModal = () => {
+        setShowModal(false);
+    };
+
+    // Obtenir noms dels alumnes des dels IDs
+    const getStudentNames = (studentIds) => {
+        if (!studentIds || !allStudents) return [];
+        return studentIds.map(id => {
+            const student = allStudents.find(s => s.id === id);
+            return student ? student.name : `ID: ${id}`;
+        });
+    };
 
     const [{ isDragging }, drag] = useDrag(() => ({
         type: ItemTypes.STUDENT,
@@ -95,12 +280,115 @@ function DraggableStudentCard({ student }) {
             isRestrictedWithDragged = true;
         }
     }    return (
-        <div ref={drag} style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student.academic_grade)}> 
-            <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{student.name}</div>
-            <div style={{ fontSize: '0.7em', opacity: 0.8 }}>
-                {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
-            </div>
-        </div>
+        <>
+            {/* Estils CSS per a l'animació */}
+            <style>
+                {`
+                    @keyframes modalSlideIn {
+                        from {
+                            opacity: 0;
+                            transform: scale(0.9) translateY(-20px);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: scale(1) translateY(0);
+                        }
+                    }
+                `}
+            </style>
+            
+            <div 
+                ref={drag} 
+                style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student.academic_grade, hasUnsatisfiedPreferences())}
+                onClick={handleClick}
+            >
+                <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{student.name}</div>
+                <div style={{ fontSize: '0.7em', opacity: 0.8 }}>
+                    {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
+                </div>
+            </div>            {/* Modal d'informació */}
+            {showModal && (
+                <div style={modalOverlayStyle} onClick={closeModal}>
+                    <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+                        <div style={modalHeaderStyle}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '600' }}>{student.name}</h3>
+                                <div style={{ fontSize: '13px', opacity: 0.9, marginTop: '4px' }}>
+                                    Informació de l'alumne
+                                </div>
+                            </div>
+                            <button 
+                                style={closeButtonStyle} 
+                                onClick={closeModal}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div style={modalBodyStyle}>
+                            <div style={sectionStyle}>
+                                <div style={sectionTitleStyle}>
+                                    <span style={{ fontSize: '16px' }}>📊</span>
+                                    <span>Nota acadèmica</span>
+                                </div>
+                                <div style={getGradeStyle(student.academic_grade)}>
+                                    {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
+                                </div>
+                            </div>
+                            
+                            <div style={sectionStyle}>
+                                <div style={sectionTitleStyle}>
+                                    <span style={{ fontSize: '16px' }}>✅</span>
+                                    <span>Preferències</span>
+                                </div>
+                                {student.preferences && student.preferences.length > 0 ? (
+                                    <ul style={listStyle}>
+                                        {getStudentNames(student.preferences).map((name, index) => (
+                                            <li key={index} style={listItemStyle}>{name}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div style={emptyStateStyle}>No té preferències</div>
+                                )}
+                            </div>
+                            
+                            <div style={sectionStyle}>
+                                <div style={sectionTitleStyle}>
+                                    <span style={{ fontSize: '16px' }}>⭐</span>
+                                    <span>Escollit per</span>
+                                </div>
+                                {student.preferred_by && student.preferred_by.length > 0 ? (
+                                    <ul style={listStyle}>
+                                        {getStudentNames(student.preferred_by).map((name, index) => (
+                                            <li key={index} style={listItemStyle}>{name}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div style={emptyStateStyle}>Ningú l'ha escollit com a preferència</div>
+                                )}
+                            </div>
+                            
+                            <div style={sectionStyle}>
+                                <div style={sectionTitleStyle}>
+                                    <span style={{ fontSize: '16px' }}>🚫</span>
+                                    <span>Restriccions</span>
+                                </div>
+                                {student.restrictions && student.restrictions.length > 0 ? (
+                                    <ul style={listStyle}>
+                                        {getStudentNames(student.restrictions).map((name, index) => (
+                                            <li key={index} style={{...listItemStyle, backgroundColor: '#fef2f2', borderColor: '#fecaca', color: '#dc2626'}}>{name}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div style={emptyStateStyle}>No té restriccions</div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
 

@@ -81,7 +81,7 @@ const studentsContainerStyle = {
     minHeight: '40px',
 };
 
-function DroppableTable({ table, studentsInTable, onDropStudent }) { 
+function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) { 
     // table ara és: { id (id_taula_plantilla), table_number (identificador_taula_dins_plantilla), capacity }
     const { draggedStudentInfo } = useDragState();
     const [sortBy, setSortBy] = useState('name'); // Per defecte, ordenem per nom
@@ -259,16 +259,16 @@ function DroppableTable({ table, studentsInTable, onDropStudent }) {
                         Gènere {getSortArrow('gender')}
                     </button>
                 </div>            )}
-            
-            {sortedStudents && sortedStudents.length > 0 ? (
-                <div style={studentsContainerStyle}>
-                    {sortedStudents.map(student => (
+              {sortedStudents && sortedStudents.length > 0 ? (
+                <div style={studentsContainerStyle}>                    {sortedStudents.map(student => (
                         <DraggableStudentCard 
                             key={student.id} 
                             student={{ ...student, originalTableId: table.id }}
+                            studentsInSameTable={sortedStudents.filter(s => s.id !== student.id)}
+                            allStudents={allStudents}
                         />
                     ))}
-                </div>            ) : (
+                </div>) : (
                 <div style={{ ...studentsContainerStyle, justifyContent: 'center', alignItems: 'center' }}>
                     {!isOver && <p style={dropZoneInfoStyle}>Taula buida</p>}
                 </div>

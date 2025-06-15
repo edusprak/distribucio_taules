@@ -966,12 +966,12 @@ function ClassroomArrangementPageContent() {
           <StudentPoolDropZone 
             onDropToPool={handleUnassignStudent}
             unassignedStudentsCount={unassignedStudents.length}
-          >
-            {unassignedStudents.length > 0 ? (
-              unassignedStudents.map(student => (
+          >            {unassignedStudents.length > 0 ? (              unassignedStudents.map(student => (
                 <DraggableStudentCard 
                   key={`pool-${student.id}`}
                   student={{...student, originalTableId: null }}
+                  studentsInSameTable={[]} // Pool d'alumnes no té companys de taula
+                  allStudents={allStudents}
                 />
               ))
             ) : (
@@ -983,8 +983,7 @@ function ClassroomArrangementPageContent() {
         </PoolZone>
         <TablesZone>
           {taulesPerRenderitzar.length > 0 ? (
-            taulesPerRenderitzar.map(taula => (
-              <DroppableTable
+            taulesPerRenderitzar.map(taula => (              <DroppableTable
                 key={taula.id_taula_plantilla}
                 table={{
                   id: taula.id_taula_plantilla,
@@ -993,6 +992,7 @@ function ClassroomArrangementPageContent() {
                 }}
                 studentsInTable={taula.students}
                 onDropStudent={handleDropStudentOnTable}
+                allStudents={allStudents}
               />
             ))
           ) : (
