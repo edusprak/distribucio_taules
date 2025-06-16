@@ -767,18 +767,19 @@ function ClassroomArrangementPageContent() {
                   );
                   
                   return (
-                    <Tooltip 
-                      key={d.id_distribucio}
-                      title={tooltipContent}
-                      placement="right"
-                      arrow
-                      enterDelay={500}
-                      leaveDelay={100}
-                    >
-                      <MenuItem value={d.id_distribucio}>
-                        {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
-                      </MenuItem>
-                    </Tooltip>
+                    <MenuItem key={d.id_distribucio} value={d.id_distribucio}>
+                      <Tooltip 
+                        title={tooltipContent}
+                        placement="right"
+                        arrow
+                        enterDelay={500}
+                        leaveDelay={100}
+                      >
+                        <span style={{ width: '100%' }}>
+                          {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
+                        </span>
+                      </Tooltip>
+                    </MenuItem>
                   );
                 })}
               </MuiSelect>
