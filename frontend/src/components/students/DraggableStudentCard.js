@@ -100,7 +100,10 @@ const modalContentStyle = {
   maxHeight: '85vh',
   overflow: 'hidden',
   animation: 'modalSlideIn 0.3s ease-out',
-  border: '1px solid #e0e7ff'
+
+  border: '1px solid #e0e7ff',
+  display: 'flex',
+  flexDirection: 'column'
 };
 
 const modalHeaderStyle = {
@@ -110,7 +113,8 @@ const modalHeaderStyle = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '20px 24px',
-  borderBottom: 'none'
+  borderBottom: 'none',
+  flexShrink: 0
 };
 
 const closeButtonStyle = {
@@ -134,7 +138,10 @@ const closeButtonStyle = {
 
 const modalBodyStyle = {
   padding: '24px',
-  background: '#fafbff'
+  background: '#fafbff',
+  flex: 1,
+  overflowY: 'auto',
+  overflowX: 'hidden'
 };
 
 const sectionStyle = {
@@ -284,8 +291,7 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
         }
     }    return (
         <>
-            {/* Estils CSS per a l'animació */}
-            <style>
+            {/* Estils CSS per a l'animació */}            <style>
                 {`
                     @keyframes modalSlideIn {
                         from {
@@ -296,6 +302,25 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                             opacity: 1;
                             transform: scale(1) translateY(0);
                         }
+                    }
+                    
+                    /* Estils personalitzats per la barra de scroll */
+                    .modal-body-scroll::-webkit-scrollbar {
+                        width: 8px;
+                    }
+                    
+                    .modal-body-scroll::-webkit-scrollbar-track {
+                        background: #f1f1f1;
+                        border-radius: 4px;
+                    }
+                    
+                    .modal-body-scroll::-webkit-scrollbar-thumb {
+                        background: #667eea;
+                        border-radius: 4px;
+                    }
+                    
+                    .modal-body-scroll::-webkit-scrollbar-thumb:hover {
+                        background: #5a6fd8;
                     }
                 `}
             </style>
@@ -329,7 +354,7 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                                 ×
                             </button>
                         </div>
-                        <div style={modalBodyStyle}>
+                        <div style={modalBodyStyle} className="modal-body-scroll">
                             <div style={sectionStyle}>
                                 <div style={sectionTitleStyle}>
                                     <span style={{ fontSize: '16px' }}>📊</span>

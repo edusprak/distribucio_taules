@@ -14,7 +14,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import ExportDistributionButton from '../components/export/ExportDistributionButton';
 import axios from 'axios';
 import Select from 'react-select'; // Per al selector de classes
-import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert } from '@mui/material';
+import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert, Tooltip } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
 // Layout principal: dues columnes, esquerra (controls) i dreta (drag&drop)
@@ -754,14 +754,33 @@ function ClassroomArrangementPageContent() {
                 value={selectedDistribucioId}
                 label="Distribució"
                 onChange={e => setSelectedDistribucioId(e.target.value)}
-                disabled={loading.distribucions || distribucionsDesades.length === 0}
-              >
-                <MenuItem value="">-- Nova distribució / Carregar --</MenuItem>
-                {distribucionsDesades.map(d => (
-                  <MenuItem key={d.id_distribucio} value={d.id_distribucio}>
-                    {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
-                  </MenuItem>
-                ))}
+                disabled={loading.distribucions || distribucionsDesades.length === 0}              >
+                <MenuItem value="">-- Nova distribució / Carregar --</MenuItem>                {distribucionsDesades.map(d => {
+                  const tooltipContent = (
+                    <div>
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Descripció:</div>
+                      <div style={{ marginBottom: '8px' }}>{d.descripcio_distribucio || 'Sense descripció'}</div>
+                      <div style={{ fontSize: '0.9em', color: '#ddd' }}>
+                        Creada: {new Date(d.created_at).toLocaleString('ca-ES')}
+                      </div>
+                    </div>
+                  );
+                  
+                  return (
+                    <Tooltip 
+                      key={d.id_distribucio}
+                      title={tooltipContent}
+                      placement="right"
+                      arrow
+                      enterDelay={500}
+                      leaveDelay={100}
+                    >
+                      <MenuItem value={d.id_distribucio}>
+                        {d.nom_distribucio} ({d.filtered_classes?.length > 0 ? d.filtered_classes.map(fc=>fc.nom_classe).join(', ') : 'Sense filtre classe'})
+                      </MenuItem>
+                    </Tooltip>
+                  );
+                })}
               </MuiSelect>
             </FormControl>            <Box display="flex" gap={1} mb={1}>
               <Button variant="contained" color="success" size="small" fullWidth onClick={handleLoadSelectedDistribucio} disabled={!selectedDistribucioId || loading.global}>
