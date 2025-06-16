@@ -81,7 +81,7 @@ const studentsContainerStyle = {
     minHeight: '40px',
 };
 
-function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) { 
+function DroppableTable({ table, studentsInTable, onDropStudent, allStudents, gradeAssignmentCriteria = 'academic' }) { 
     // table ara és: { id (id_taula_plantilla), table_number (identificador_taula_dins_plantilla), capacity }
     const { draggedStudentInfo } = useDragState();
     const [sortBy, setSortBy] = useState('name'); // Per defecte, ordenem per nom
@@ -127,11 +127,25 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
             canDrop: !!monitor.canDrop(),
         }),
     }), [table, studentsInTable, onDropStudent, draggedStudentInfo]);    // Calcula la mitjana de les notes acadèmiques dels alumnes a aquesta taula
-    const calculateAverageGrade = () => {
+    const calculateAverageAcademicGrade = () => {
         if (!studentsInTable || studentsInTable.length === 0) return 'N/A';
 
         const validGrades = studentsInTable
             .map(student => parseFloat(student.academic_grade))
+            .filter(grade => !isNaN(grade));
+        
+        if (validGrades.length === 0) return 'N/A';
+        
+        const average = validGrades.reduce((acc, grade) => acc + grade, 0) / validGrades.length;
+        return average.toFixed(2);
+    };
+
+    // Calcula la mitjana de les notes d'actitud dels alumnes a aquesta taula
+    const calculateAverageAttitudeGrade = () => {
+        if (!studentsInTable || studentsInTable.length === 0) return 'N/A';
+
+        const validGrades = studentsInTable
+            .map(student => parseFloat(student.attitude_grade))
             .filter(grade => !isNaN(grade));
         
         if (validGrades.length === 0) return 'N/A';
@@ -180,10 +194,13 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
             if (sortBy === 'name') {
                 return sortOrder === 'asc' 
                     ? a.name.localeCompare(b.name) 
-                    : b.name.localeCompare(a.name);
-            } else if (sortBy === 'academic_grade') {
+                    : b.name.localeCompare(a.name);            } else if (sortBy === 'academic_grade') {
                 const gradeA = parseFloat(a.academic_grade) || 0;
                 const gradeB = parseFloat(b.academic_grade) || 0;
+                return sortOrder === 'asc' ? gradeA - gradeB : gradeB - gradeA;
+            } else if (sortBy === 'attitude_grade') {
+                const gradeA = parseFloat(a.attitude_grade) || 0;
+                const gradeB = parseFloat(b.attitude_grade) || 0;
                 return sortOrder === 'asc' ? gradeA - gradeB : gradeB - gradeA;
             } else if (sortBy === 'gender') {
                 return sortOrder === 'asc' 
@@ -205,8 +222,10 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
             // Si estem ordenant per un nou atribut, establim aquest i comencem per ordre ascendent
             setSortBy(attribute);
             setSortOrder('asc');
-        }
-    };    const averageGrade = calculateAverageGrade();
+        }    };
+
+    const averageAcademicGrade = calculateAverageAcademicGrade();
+    const averageAttitudeGrade = calculateAverageAttitudeGrade();
     const genderDistribution = calculateGenderDistribution();
     const sortedStudents = sortStudents(studentsInTable);
 
@@ -226,9 +245,8 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
     return (
         <div ref={drop} style={tableStyle(isOver, canDrop)}>            <div style={tableHeaderStyle}>
                 {table.table_number} ({studentsInTable?.length || 0}/{table.capacity})
-            </div>
-            <div style={tableInfoStyle}>
-                Nota mitjana: {averageGrade}
+            </div>            <div style={tableInfoStyle}>
+                Nota acadèmica: {averageAcademicGrade} | Nota actitud: {averageAttitudeGrade}
             </div>
             <div style={tableInfoStyle}>
                 Gènere: {genderDistribution}
@@ -243,13 +261,19 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
                         title="Ordenar per nom"
                     >
                         Nom {getSortArrow('name')}
-                    </button>
-                    <button 
+                    </button>                    <button 
                         style={getSortButtonStyle('academic_grade')} 
                         onClick={() => handleSortClick('academic_grade')}
-                        title="Ordenar per nota"
+                        title="Ordenar per nota acadèmica"
                     >
-                        Nota {getSortArrow('academic_grade')}
+                        Nota Ac. {getSortArrow('academic_grade')}
+                    </button>
+                    <button 
+                        style={getSortButtonStyle('attitude_grade')} 
+                        onClick={() => handleSortClick('attitude_grade')}
+                        title="Ordenar per nota d'actitud"
+                    >
+                        Nota Act. {getSortArrow('attitude_grade')}
                     </button>
                     <button 
                         style={getSortButtonStyle('gender')} 
@@ -260,12 +284,12 @@ function DroppableTable({ table, studentsInTable, onDropStudent, allStudents }) 
                     </button>
                 </div>            )}
               {sortedStudents && sortedStudents.length > 0 ? (
-                <div style={studentsContainerStyle}>                    {sortedStudents.map(student => (
-                        <DraggableStudentCard 
+                <div style={studentsContainerStyle}>                    {sortedStudents.map(student => (                        <DraggableStudentCard 
                             key={student.id} 
                             student={{ ...student, originalTableId: table.id }}
                             studentsInSameTable={sortedStudents.filter(s => s.id !== student.id)}
                             allStudents={allStudents}
+                            gradeAssignmentCriteria={gradeAssignmentCriteria}
                         />
                     ))}
                 </div>) : (

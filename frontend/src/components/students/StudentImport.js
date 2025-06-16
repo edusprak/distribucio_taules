@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import Select from 'react-select';
 import classService from '../../services/classService';
 import studentService from '../../services/studentService';
-import { Box, Button, Typography, Alert, CircularProgress, Paper } from '@mui/material';
+import { Box, Button, Typography, Alert, CircularProgress } from '@mui/material';
 
 const formStyle = {
   border: '1px solid #ccc',
@@ -119,16 +119,15 @@ function StudentImport({ onClose, onImportSuccess }) {
       setFile(null);
       setFileName('');
     }
-  };
-  // Generar plantilla de ejemplo
+  };  // Generar plantilla de ejemplo
   const generateTemplateFile = (type) => {
     // Campos de ejemplo para la plantilla
-    const headers = ['nom', 'nota', 'gènere'];
+    const headers = ['nom', 'nota_academica', 'nota_actitud', 'gènere'];
     const sampleData = [
-      ['Alumne 1', '8.5', 'female'],
-      ['Alumne 2', '7.2', 'male'],
-      ['Alumne 3', '6.8', 'male'],
-      ['Alumne 4', '9.1', 'female']
+      ['Alumne 1', '8.5', '7.0', 'female'],
+      ['Alumne 2', '7.2', '8.5', 'male'],
+      ['Alumne 3', '6.8', '6.0', 'male'],
+      ['Alumne 4', '9.1', '9.5', 'female']
     ];
     
     if (type === 'csv') {
@@ -142,7 +141,7 @@ function StudentImport({ onClose, onImportSuccess }) {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       setImportTemplate(URL.createObjectURL(blob));
       setTimeout(() => document.getElementById('templateLink').click(), 100);    } else {
-      toast.info('Crea un fitxer Excel amb les següents columnes: nom, nota, gènere');
+      toast.info('Crea un fitxer Excel amb les següents columnes: nom, nota_academica, nota_actitud, gènere');
     }
   };
 
@@ -194,7 +193,7 @@ function StudentImport({ onClose, onImportSuccess }) {
       
       <div style={{ marginBottom: '15px' }}>        <Typography variant="body2" color="textSecondary" paragraph>
           Pots importar alumnes des d'un fitxer CSV o Excel (xlsx/xls).
-          El fitxer ha de tenir les següents columnes: nom (obligatori), nota, gènere.
+          El fitxer ha de tenir les següents columnes: nom (obligatori), nota_academica, nota_actitud, gènere.
           Les restriccions i preferències només es podran definir a través de l'aplicació web.
         </Typography>
         

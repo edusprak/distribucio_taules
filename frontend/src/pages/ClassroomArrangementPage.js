@@ -14,7 +14,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import ExportDistributionButton from '../components/export/ExportDistributionButton';
 import axios from 'axios';
 import Select from 'react-select'; // Per al selector de classes
-import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert, Tooltip } from '@mui/material';
+import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert, Tooltip, Radio, RadioGroup } from '@mui/material';
 import { styled } from '@mui/material/styles';
 
 // Layout principal: dues columnes, esquerra (controls) i dreta (drag&drop)
@@ -102,6 +102,7 @@ function ClassroomArrangementPageContent() {
     const [error, setError] = useState({ global: null, plantilla: null, distribucio: null, autoAssign: null, classes: null });    const [isProcessingAutoAssign, setIsProcessingAutoAssign] = useState(false);
     const [balanceByGender, setBalanceByGender] = useState(false);
     const [usePreferences, setUsePreferences] = useState(true);
+    const [gradeAssignmentCriteria, setGradeAssignmentCriteria] = useState('academic'); // 'academic', 'attitude', 'average'
     const [lastAssignmentMetrics, setLastAssignmentMetrics] = useState(null);
     
     // Nova funcionalitat: Mètriques dinàmiques
@@ -190,9 +191,10 @@ function ClassroomArrangementPageContent() {
     // Efecte per actualitzar displayedStudents quan canvia la plantilla activa o el filtre de classes (si NO s'ha carregat una distribució)
     useEffect(() => {
         if (activePlantilla && !selectedDistribucioId) { // Només si no hi ha una distribució carregada (que ja gestiona els seus alumnes)
-            let studentsForPool = [];
-            if (selectedFilterClasses.length > 0) {
-                const selectedClassIds = selectedFilterClasses.map(sc => sc.value);
+            let studentsForPool = [];            if (selectedFilterClasses.length > 0) {
+                const selectedClassIds = selectedFilterClasses
+                    .filter(sc => sc && sc.value) // Filtrar elements vàlids
+                    .map(sc => sc.value);
                 studentsForPool = allStudents
                     .filter(s => s.id_classe_alumne && selectedClassIds.includes(s.id_classe_alumne))
                     .map(s => ({ ...s, taula_plantilla_id: null }));
@@ -235,11 +237,11 @@ function ClassroomArrangementPageContent() {
                 const { distribucio } = response;
                 setActiveDistribucioInfo({ nom: distribucio.nom_distribucio, descripcio: distribucio.descripcio_distribucio });
                 setNomNovaDistribucio(distribucio.nom_distribucio);
-                setDescNovaDistribucio(distribucio.descripcio_distribucio || '');
-
-                // Establir les classes seleccionades per al filtre segons la distribució carregada
+                setDescNovaDistribucio(distribucio.descripcio_distribucio || '');                // Establir les classes seleccionades per al filtre segons la distribució carregada
                 if (distribucio.selected_classes && distribucio.selected_classes.length > 0) {
-                    const filterClasses = distribucio.selected_classes.map(c => ({ value: c.id_classe, label: c.nom_classe }));
+                    const filterClasses = distribucio.selected_classes
+                        .filter(c => c && c.id_classe && c.nom_classe) // Filtrar elements vàlids
+                        .map(c => ({ value: c.id_classe, label: c.nom_classe }));
                     setSelectedFilterClasses(filterClasses);
                 } else {
                     setSelectedFilterClasses([]); // Si la distribució no tenia filtre de classe, el netegem
@@ -297,7 +299,9 @@ function ClassroomArrangementPageContent() {
                 descripcio_distribucio: descNovaDistribucio,
                 plantilla_id: activePlantilla.id_plantilla,
                 assignacions: assignacionsActuals,
-                selected_classes_ids: selectedFilterClasses.map(sc => sc.value) // AFEGIT
+                selected_classes_ids: selectedFilterClasses
+                    .filter(sc => sc && sc.value) // Filtrar elements vàlids
+                    .map(sc => sc.value) // AFEGIT
             };
 
             const response = await distribucioService.saveDistribucio(payload);
@@ -435,8 +439,7 @@ function ClassroomArrangementPageContent() {
             toast.info("No hi ha alumnes no assignats (del filtre de classe actual) per a l'assignació automàtica.");
             return;
         }
-        setIsProcessingAutoAssign(true);
-        setError(prev => ({ ...prev, autoAssign: null }));
+        setIsProcessingAutoAssign(true);        setError(prev => ({ ...prev, autoAssign: null }));
         // Elimino estats ja no usats per l'autoassignació directa
         // setProposedAssignments([]);
 
@@ -444,6 +447,7 @@ function ClassroomArrangementPageContent() {
             id: s.id,
             name: s.name,
             academic_grade: s.academic_grade,
+            attitude_grade: s.attitude_grade,
             gender: s.gender,
             restrictions: s.restrictions,
             preferences: s.preferences, // <-- AFEGIT
@@ -455,17 +459,18 @@ function ClassroomArrangementPageContent() {
                 id: s.id,
                 name: s.name,
                 academic_grade: s.academic_grade,
+                attitude_grade: s.attitude_grade,
                 gender: s.gender,
                 restrictions: s.restrictions,
                 preferences: s.preferences, // <-- AFEGIT
                 current_table_id: s.taula_plantilla_id 
             }));
-        const payloadStudents = [...alreadyAssignedStudentsPayload, ...studentsForAutoAssignPayload];        try {
-            const payload = {
+        const payloadStudents = [...alreadyAssignedStudentsPayload, ...studentsForAutoAssignPayload];        try {            const payload = {
                 plantilla_id: activePlantilla.id_plantilla,
                 students: payloadStudents,
                 balanceByGender: balanceByGender,
                 usePreferences: usePreferences,
+                gradeAssignmentCriteria: gradeAssignmentCriteria,
             };
             const response = await axios.post(`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3001/api'}/assignments/auto-assign`, payload);            if (response.data.success) {
                 const assignments = response.data.proposedAssignments || [];
@@ -562,9 +567,7 @@ function ClassroomArrangementPageContent() {
             metrics.preferencesSatisfactionRate = studentsWithPrefs.length > 0 
                 ? Math.round((satisfiedCount / studentsWithPrefs.length) * 100) 
                 : 100;
-        }
-
-        // Calcular mètriques d'equilibri de notes
+        }        // Calcular mètriques d'equilibri de notes (acadèmiques i d'actitud)
         const tablesByPlantillaId = {};
         assignedStudents.forEach(student => {
             const tableId = student.taula_plantilla_id;
@@ -574,7 +577,8 @@ function ClassroomArrangementPageContent() {
             tablesByPlantillaId[tableId].push(student);
         });
 
-        const tableAverages = Object.values(tablesByPlantillaId)
+        // Mètriques per notes acadèmiques
+        const academicTableAverages = Object.values(tablesByPlantillaId)
             .map(studentsInTable => {
                 const validGrades = studentsInTable
                     .map(s => parseFloat(s.academic_grade))
@@ -586,11 +590,39 @@ function ClassroomArrangementPageContent() {
             })
             .filter(avg => avg !== null);
 
-        if (tableAverages.length > 1) {
-            const avgOfAverages = tableAverages.reduce((sum, avg) => sum + avg, 0) / tableAverages.length;
-            const variance = tableAverages.reduce((sum, avg) => sum + Math.pow(avg - avgOfAverages, 2), 0) / tableAverages.length;
-            metrics.averageGradeBalance = Math.round((1 / (1 + variance)) * 100);
+        // Mètriques per notes d'actitud
+        const attitudeTableAverages = Object.values(tablesByPlantillaId)
+            .map(studentsInTable => {
+                const validGrades = studentsInTable
+                    .map(s => parseFloat(s.attitude_grade))
+                    .filter(grade => !isNaN(grade));
+                
+                return validGrades.length > 0 
+                    ? validGrades.reduce((sum, grade) => sum + grade, 0) / validGrades.length
+                    : null;
+            })
+            .filter(avg => avg !== null);
+
+        // Calcular equilibri per notes acadèmiques
+        if (academicTableAverages.length > 1) {
+            const avgOfAverages = academicTableAverages.reduce((sum, avg) => sum + avg, 0) / academicTableAverages.length;
+            const variance = academicTableAverages.reduce((sum, avg) => sum + Math.pow(avg - avgOfAverages, 2), 0) / academicTableAverages.length;
+            metrics.averageAcademicGradeBalance = Math.round((1 / (1 + variance)) * 100);
+        } else {
+            metrics.averageAcademicGradeBalance = academicTableAverages.length === 1 ? 100 : 0;
         }
+
+        // Calcular equilibri per notes d'actitud
+        if (attitudeTableAverages.length > 1) {
+            const avgOfAverages = attitudeTableAverages.reduce((sum, avg) => sum + avg, 0) / attitudeTableAverages.length;
+            const variance = attitudeTableAverages.reduce((sum, avg) => sum + Math.pow(avg - avgOfAverages, 2), 0) / attitudeTableAverages.length;
+            metrics.averageAttitudeGradeBalance = Math.round((1 / (1 + variance)) * 100);
+        } else {
+            metrics.averageAttitudeGradeBalance = attitudeTableAverages.length === 1 ? 100 : 0;
+        }
+
+        // Mantenir la mètrica original per compatibilitat
+        metrics.averageGradeBalance = metrics.averageAcademicGradeBalance;
 
         // Calcular mètriques d'equilibri de gènere si balanceByGender està activat
         if (balanceByGender) {
@@ -840,12 +872,63 @@ function ClassroomArrangementPageContent() {
               control={<Checkbox checked={usePreferences} onChange={e => setUsePreferences(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
               label={<Typography variant="body2">Usar preferències dels alumnes</Typography>}
               sx={{ mb: 1 }}
-            />
-            <FormControlLabel
+            />            <FormControlLabel
               control={<Checkbox checked={balanceByGender} onChange={e => setBalanceByGender(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
               label={<Typography variant="body2">Intentar equilibrar per gènere</Typography>}
               sx={{ mb: 1 }}
             />
+            
+            {/* Nova secció per al criteri de notes */}
+            <Box sx={{ mb: 2, p: 1.5, border: '1px solid #E0E3EA', borderRadius: 1, bgcolor: '#F8F9FA' }}>
+              <Typography variant="body2" fontWeight={600} mb={1}>Criteri de notes per a l'assignació</Typography>
+              <FormControl component="fieldset" size="small">
+                <RadioGroup
+                  value={gradeAssignmentCriteria}
+                  onChange={(e) => setGradeAssignmentCriteria(e.target.value)}
+                  row
+                >
+                  <FormControlLabel
+                    value="academic"
+                    control={<Radio size="small" disabled={isProcessingAutoAssign} />}
+                    label={<Typography variant="body2">Nota acadèmica</Typography>}
+                    sx={{ mr: 2 }}
+                  />
+                  <FormControlLabel
+                    value="attitude"
+                    control={<Radio size="small" disabled={isProcessingAutoAssign} />}
+                    label={<Typography variant="body2">Nota d'actitud</Typography>}
+                    sx={{ mr: 2 }}
+                  />
+                  <FormControlLabel
+                    value="average"
+                    control={<Radio size="small" disabled={isProcessingAutoAssign} />}
+                    label={<Typography variant="body2">Promig de les dues</Typography>}
+                  />
+                </RadioGroup>
+              </FormControl>
+            </Box>
+            
+            {/* Llegenda de colors per a les notes */}
+            <Box sx={{ mb: 2, p: 1, border: '1px solid #E0E3EA', borderRadius: 1, bgcolor: '#FAFAFA' }}>
+              <Typography variant="caption" fontWeight={600} mb={0.5} display="block">
+                Colors de les targetes ({gradeAssignmentCriteria === 'academic' ? 'nota acadèmica' : gradeAssignmentCriteria === 'attitude' ? 'nota d\'actitud' : 'promig de notes'}):
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 12, height: 12, bgcolor: '#ffe6e6', border: '1px solid #ddd', borderRadius: 0.5 }} />
+                  <Typography variant="caption">0-3</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 12, height: 12, bgcolor: '#fff9e6', border: '1px solid #ddd', borderRadius: 0.5 }} />
+                  <Typography variant="caption">4-7</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Box sx={{ width: 12, height: 12, bgcolor: '#e8f5e8', border: '1px solid #ddd', borderRadius: 0.5 }} />
+                  <Typography variant="caption">8-10</Typography>
+                </Box>
+              </Box>
+            </Box>
+            
             <Button
               variant="contained"
               color="primary"
@@ -878,13 +961,6 @@ function ClassroomArrangementPageContent() {
                 <Typography variant="body2" sx={{ mb: 0.5 }}>
                   <strong>Alumnes assignats:</strong> {(currentMetrics || lastAssignmentMetrics).totalStudentsAssigned}
                 </Typography>
-                                
-                {/* Mètriques d'equilibri de gènere */}
-                {(currentMetrics || lastAssignmentMetrics).genderBalance !== null && (
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Equilibri de gènere:</strong> {(currentMetrics || lastAssignmentMetrics).genderBalance}%
-                  </Typography>
-                )}
                 
                 {/* Mètriques de preferències */}
                 {usePreferences && (currentMetrics || lastAssignmentMetrics).totalStudentsWithPreferences > 0 && (
@@ -986,12 +1062,12 @@ function ClassroomArrangementPageContent() {
           <StudentPoolDropZone 
             onDropToPool={handleUnassignStudent}
             unassignedStudentsCount={unassignedStudents.length}
-          >            {unassignedStudents.length > 0 ? (              unassignedStudents.map(student => (
-                <DraggableStudentCard 
+          >            {unassignedStudents.length > 0 ? (              unassignedStudents.map(student => (                <DraggableStudentCard 
                   key={`pool-${student.id}`}
                   student={{...student, originalTableId: null }}
                   studentsInSameTable={[]} // Pool d'alumnes no té companys de taula
                   allStudents={allStudents}
+                  gradeAssignmentCriteria={gradeAssignmentCriteria}
                 />
               ))
             ) : (
@@ -1013,6 +1089,7 @@ function ClassroomArrangementPageContent() {
                 studentsInTable={taula.students}
                 onDropStudent={handleDropStudentOnTable}
                 allStudents={allStudents}
+                gradeAssignmentCriteria={gradeAssignmentCriteria}
               />
             ))
           ) : (

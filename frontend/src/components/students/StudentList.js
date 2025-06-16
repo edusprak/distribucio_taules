@@ -116,12 +116,12 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
     }
     return '';
   };
-
   const startEditing = (student, field) => {
     let value = '';
     switch (field) {
       case 'name': value = student.name || ''; break;
       case 'academic_grade': value = student.academic_grade !== null ? String(student.academic_grade) : ''; break;
+      case 'attitude_grade': value = student.attitude_grade !== null ? String(student.attitude_grade) : ''; break;
       case 'gender': value = student.gender || ''; break;
       case 'class_name': value = student.id_classe_alumne || ''; break;
       case 'restrictions': value = student.restrictions || []; break;
@@ -136,7 +136,6 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
     setEditingState(null);
     setEditingValue('');
   };
-
   const saveEdit = (student) => {
     if (!editingState) return;
     
@@ -147,6 +146,13 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       const grade = parseFloat(editingValue);
       if (isNaN(grade) || grade < 0 || grade > 10) {
         alert('La nota acadèmica ha de ser un número entre 0 i 10.');
+        return;
+      }
+      updatedValue = grade;
+    } else if (field === 'attitude_grade') {
+      const grade = parseFloat(editingValue);
+      if (isNaN(grade) || grade < 0 || grade > 10) {
+        alert('La nota d\'actitud ha de ser un número entre 0 i 10.');
         return;
       }
       updatedValue = grade;
@@ -162,6 +168,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
     switch (field) {
       case 'name': updatedStudent.name = updatedValue; break;
       case 'academic_grade': updatedStudent.academic_grade = updatedValue; break;
+      case 'attitude_grade': updatedStudent.attitude_grade = updatedValue; break;
       case 'gender': updatedStudent.gender = updatedValue; break;
       case 'class_name': updatedStudent.id_classe_alumne = updatedValue; break;
       case 'restrictions': updatedStudent.restrictions = updatedValue; break;
@@ -192,11 +199,15 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
       switch (sortBy) {
         case 'name':
           comparison = a.name.localeCompare(b.name);
-          break;
-        case 'academic_grade':
+          break;        case 'academic_grade':
           const gradeA = parseFloat(a.academic_grade) || 0;
           const gradeB = parseFloat(b.academic_grade) || 0;
           comparison = gradeA - gradeB;
+          break;
+        case 'attitude_grade':
+          const attitudeA = parseFloat(a.attitude_grade) || 0;
+          const attitudeB = parseFloat(b.attitude_grade) || 0;
+          comparison = attitudeA - attitudeB;
           break;
         case 'gender':
           comparison = (a.gender || '').localeCompare(b.gender || '');
@@ -242,15 +253,24 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
               'Nom',
               React.createElement('span', { style: sortIconStyle }, getSortArrow('name'))
             )
-          ),
-          React.createElement(
+          ),          React.createElement(
             'th', 
             { style: {...thStyle, width: '80px'}, onClick: () => handleSortClick('academic_grade') },
             React.createElement(
               'div',
               { style: thContainerStyle },
-              'Nota',
+              'Nota Acadèmica',
               React.createElement('span', { style: sortIconStyle }, getSortArrow('academic_grade'))
+            )
+          ),
+          React.createElement(
+            'th', 
+            { style: {...thStyle, width: '80px'}, onClick: () => handleSortClick('attitude_grade') },
+            React.createElement(
+              'div',
+              { style: thContainerStyle },
+              'Nota Actitud',
+              React.createElement('span', { style: sortIconStyle }, getSortArrow('attitude_grade'))
             )
           ),
           React.createElement(
@@ -287,7 +307,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
               'tr',
               { key: `error-${index}` },              React.createElement(
                 'td',
-                { colSpan: "8", style: {...tdStyle, color: 'red', padding: '10px', border: '1px dashed red'} },
+                { colSpan: "9", style: {...tdStyle, color: 'red', padding: '10px', border: '1px dashed red'} },
                 `Error: Dades de l'alumne invàlides a la posició ${index} de la llista.`
               )
             );
@@ -346,7 +366,39 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
               );
             } 
             return displayGrade;
-          };          const renderGenderCell = () => {
+          };
+
+          const renderAttitudeGradeCell = () => {
+            const displayAttitudeGrade = student.attitude_grade !== null && student.attitude_grade !== undefined 
+              ? parseFloat(student.attitude_grade).toFixed(2) 
+              : 'N/A';
+            const isEditing = editingState?.studentId === student.id && editingState.field === 'attitude_grade';
+            
+            if (isEditing) {
+              return React.createElement(
+                'input',
+                {
+                  ref: inputRef,
+                  type: "number",
+                  step: "0.01",
+                  min: "0",
+                  max: "10",
+                  value: editingValue,
+                  onChange: (e) => setEditingValue(e.target.value),
+                  onKeyDown: (e) => handleKeyDown(e, student),
+                  onBlur: () => cancelEditing(),
+                  style: { 
+                    width: '100%', 
+                    padding: '10px 15px', 
+                    border: '1px solid #007bff', 
+                    borderRadius: '3px',
+                    boxSizing: 'border-box' 
+                  }
+                }
+              );
+            } 
+            return displayAttitudeGrade;
+          };const renderGenderCell = () => {
             const isEditing = editingState?.studentId === student.id && editingState.field === 'gender';
             
             if (isEditing) {
@@ -787,8 +839,7 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                 onClick: () => !editingState && startEditing(student, 'name')
               },
               renderNameCell()
-            ),
-            React.createElement(
+            ),            React.createElement(
               'td', 
               { 
                 style: editingState?.studentId === student.id && editingState.field === 'academic_grade' 
@@ -797,7 +848,17 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                 onClick: () => !editingState && startEditing(student, 'academic_grade')
               },
               renderGradeCell()
-            ),            React.createElement(
+            ),
+            React.createElement(
+              'td', 
+              { 
+                style: editingState?.studentId === student.id && editingState.field === 'attitude_grade' 
+                  ? { ...tdStyle, padding: 0 } 
+                  : { ...editableCellStyle },
+                onClick: () => !editingState && startEditing(student, 'attitude_grade')
+              },
+              renderAttitudeGradeCell()
+            ),React.createElement(
               'td', 
               { 
                 style: editingState?.studentId === student.id && editingState.field === 'gender' 

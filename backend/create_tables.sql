@@ -38,7 +38,8 @@ EXECUTE PROCEDURE trigger_set_timestamp_classes();
 CREATE TABLE students (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
-    academic_grade NUMERIC(4, 2) CHECK (academic_grade >= 0 AND academic_grade <= 10),
+    academic_grade NUMERIC(4, 2) CHECK (academic_grade >= 0 AND academic_grade <= 10), -- Nota acadèmica
+    attitude_grade NUMERIC(4, 2) CHECK (attitude_grade >= 0 AND attitude_grade <= 10), -- Nota d'actitud
     gender VARCHAR(50),
     id_classe_alumne INT, 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -217,3 +218,22 @@ CREATE INDEX IF NOT EXISTS idx_distribucio_classes_filter_id_classe ON distribuc
 -- AFEGITS ÍNDEXS PER A student_preferences
 CREATE INDEX IF NOT EXISTS idx_student_preferences_student_id_1 ON student_preferences(student_id_1);
 CREATE INDEX IF NOT EXISTS idx_student_preferences_student_id_2 ON student_preferences(student_id_2);
+
+-- MIGRACIÓ DE DADES: Si la taula students ja existia amb només academic_grade,
+-- aquest script migrarà les dades per mantenir compatibilitat
+DO $$
+BEGIN
+    -- Comprova si existeix la columna attitude_grade
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'students' AND column_name = 'attitude_grade'
+    ) THEN
+        -- Si no existeix, afegeix la columna i migra les dades
+        ALTER TABLE students ADD COLUMN attitude_grade NUMERIC(4, 2) CHECK (attitude_grade >= 0 AND attitude_grade <= 10);
+        
+        -- Mou les dades d'academic_grade a attitude_grade i neteja academic_grade
+        UPDATE students SET attitude_grade = academic_grade, academic_grade = NULL;
+        
+        RAISE NOTICE 'Migració completada: les notes existents s''han mogut a attitude_grade';
+    END IF;
+END $$;

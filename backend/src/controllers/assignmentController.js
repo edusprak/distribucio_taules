@@ -2,7 +2,7 @@
 const db = require('../db'); // El necessitarem per obtenir les taules de la plantilla
 
 const autoAssignStudents = async (req, res) => {
-    const { students: studentsFromFrontend, plantilla_id, balanceByGender, usePreferences = true } = req.body;
+    const { students: studentsFromFrontend, plantilla_id, balanceByGender, usePreferences = true, gradeAssignmentCriteria = 'academic' } = req.body;
 
     if (!studentsFromFrontend || !Array.isArray(studentsFromFrontend) || plantilla_id === undefined) {
         return res.status(400).json({
@@ -31,28 +31,41 @@ const autoAssignStudents = async (req, res) => {
             current_avg_grade: null,
             current_male_count: 0,
             current_female_count: 0,
-        }));
-
-        // 2. Preparar alumnes: filtrar els ja assignats i ordenar
-        const allStudents = studentsFromFrontend.map(s => ({
-            id: s.id,
-            name: s.name,
-            academic_grade: parseFloat(s.academic_grade),
-            gender: s.gender || 'unknown',
-            restrictions: Array.isArray(s.restrictions) ? s.restrictions : [],
-            preferences: Array.isArray(s.preferences) ? s.preferences : [],
-            current_table_id: s.table_id || s.id_taula_plantilla || null 
-        }));
-
-        // Alumnes que ja estan assignats a una taula d'aquesta plantilla
+        }));        // 2. Preparar alumnes: filtrar els ja assignats i ordenar
+        const allStudents = studentsFromFrontend.map(s => {
+            const academicGrade = parseFloat(s.academic_grade);
+            const attitudeGrade = parseFloat(s.attitude_grade);
+            
+            // Calcular nota efectiva segons el criteri seleccionat
+            let effectiveGrade = null;
+            if (gradeAssignmentCriteria === 'academic' && !isNaN(academicGrade)) {
+                effectiveGrade = academicGrade;
+            } else if (gradeAssignmentCriteria === 'attitude' && !isNaN(attitudeGrade)) {
+                effectiveGrade = attitudeGrade;
+            } else if (gradeAssignmentCriteria === 'average' && !isNaN(academicGrade) && !isNaN(attitudeGrade)) {
+                effectiveGrade = (academicGrade + attitudeGrade) / 2;
+            }
+            
+            return {
+                id: s.id,
+                name: s.name,
+                academic_grade: academicGrade,
+                attitude_grade: attitudeGrade,
+                effective_grade: effectiveGrade, // Nova propietat per la nota efectiva
+                gender: s.gender || 'unknown',
+                restrictions: Array.isArray(s.restrictions) ? s.restrictions : [],
+                preferences: Array.isArray(s.preferences) ? s.preferences : [],
+                current_table_id: s.table_id || s.id_taula_plantilla || null 
+            };
+        });        // Alumnes que ja estan assignats a una taula d'aquesta plantilla
         allStudents.forEach(student => {
             if (student.current_table_id) {
                 const table = tablesFromPlantilla.find(t => t.id === student.current_table_id);
                 if (table) {
                     table.students_assigned.push(student);
                     table.current_occupancy++;
-                    if (!isNaN(student.academic_grade)) {
-                        table.current_sum_of_grades += student.academic_grade;
+                    if (!isNaN(student.effective_grade)) {
+                        table.current_sum_of_grades += student.effective_grade;
                     }
                     if (student.gender === 'male') table.current_male_count++;
                     else if (student.gender === 'female') table.current_female_count++;
@@ -62,7 +75,7 @@ const autoAssignStudents = async (req, res) => {
         
         // Recalcular mitjanes inicials
         tablesFromPlantilla.forEach(table => {
-             const validGradesCount = table.students_assigned.filter(s => !isNaN(s.academic_grade)).length;
+             const validGradesCount = table.students_assigned.filter(s => !isNaN(s.effective_grade)).length;
              table.current_avg_grade = validGradesCount > 0 ? table.current_sum_of_grades / validGradesCount : null;
         });
 
@@ -154,12 +167,10 @@ const autoAssignStudents = async (req, res) => {
             if (variabilityConfig.randomnessLevel > 0) {
                 console.log(`🎲 Aplicant aleatorietat (nivell: ${variabilityConfig.randomnessLevel})`);
                 studentsToAssign = shuffleArray(studentsToAssign);
-            }
-
-            // Calculem estadístiques globals
-            const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.academic_grade));
+            }            // Calculem estadístiques globals
+            const studentsWithValidGrades = allStudents.filter(s => !isNaN(s.effective_grade));
             const overallAverageGrade = studentsWithValidGrades.length > 0
-                ? studentsWithValidGrades.reduce((sum, s) => sum + s.academic_grade, 0) / studentsWithValidGrades.length
+                ? studentsWithValidGrades.reduce((sum, s) => sum + s.effective_grade, 0) / studentsWithValidGrades.length
                 : null;
 
             const totalMaleStudents = studentsToAssign.filter(s => s.gender === 'male').length;
@@ -288,14 +299,13 @@ const autoAssignStudents = async (req, res) => {
         for (const assignment of proposedAssignments) {
             const table = finalTables.find(t => t.id === assignment.tableId);
             const student = allStudents.find(s => s.id === assignment.studentId);
-            
-            if (table && student && !student.current_table_id) {
+              if (table && student && !student.current_table_id) {
                 table.students_assigned.push(student);
                 table.current_occupancy++;
                 
-                if (!isNaN(student.academic_grade)) {
-                    table.current_sum_of_grades += student.academic_grade;
-                    const validGradesCount = table.students_assigned.filter(s => !isNaN(s.academic_grade)).length;
+                if (!isNaN(student.effective_grade)) {
+                    table.current_sum_of_grades += student.effective_grade;
+                    const validGradesCount = table.students_assigned.filter(s => !isNaN(s.effective_grade)).length;
                     table.current_avg_grade = validGradesCount > 0 
                         ? table.current_sum_of_grades / validGradesCount 
                         : null;
@@ -391,11 +401,10 @@ function assignStudentToTable(student, table, assignments) {
     // Actualitzem l'estat de la taula
     table.students_assigned.push(student);
     table.current_occupancy++;
-    
-    if (!isNaN(student.academic_grade)) {
-        table.current_sum_of_grades += student.academic_grade;
+      if (!isNaN(student.effective_grade)) {
+        table.current_sum_of_grades += student.effective_grade;
         
-        const validGradesCount = table.students_assigned.filter(s => !isNaN(s.academic_grade)).length;
+        const validGradesCount = table.students_assigned.filter(s => !isNaN(s.effective_grade)).length;
         table.current_avg_grade = validGradesCount > 0 
             ? table.current_sum_of_grades / validGradesCount 
             : null;
@@ -434,13 +443,11 @@ function calculateTableScore(student, table, options) {
         if (studentsInTablePreferringThis > 0) {
             score += 200;
         }
-    }
-
-    // PRIORITAT 2: Equilibri acadèmic (amb tolerància configurable)
-    const studentGrade = student.academic_grade;
+    }    // PRIORITAT 2: Equilibri acadèmic (amb tolerància configurable)
+    const studentGrade = student.effective_grade;
     if (overallAverageGrade !== null && !isNaN(studentGrade)) {
-        const studentsWithGrades = table.students_assigned.filter(s => !isNaN(s.academic_grade));
-        const newGradeSum = studentsWithGrades.reduce((sum, s) => sum + s.academic_grade, 0) + studentGrade;
+        const studentsWithGrades = table.students_assigned.filter(s => !isNaN(s.effective_grade));
+        const newGradeSum = studentsWithGrades.reduce((sum, s) => sum + s.effective_grade, 0) + studentGrade;
         const newCount = studentsWithGrades.length + 1;
         const newAvg = newCount > 0 ? newGradeSum / newCount : overallAverageGrade;
         
@@ -514,11 +521,10 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
                 studentB.preferences.includes(studentA.id) &&
                 !studentA.restrictions?.includes(studentB.id) &&
                 !studentB.restrictions?.includes(studentA.id)) {
-                    
-                mutualPairs.push({
+                      mutualPairs.push({
                     studentA,
                     studentB,
-                    avgGrade: ((studentA.academic_grade || 0) + (studentB.academic_grade || 0)) / 2
+                    avgGrade: ((studentA.effective_grade || 0) + (studentB.effective_grade || 0)) / 2
                 });
             }
         }
@@ -649,7 +655,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
                 );
                 
                 if (someonePrefersThem) {
-                    foundTableWithSomeoneWhoPrefersThem = true;
+                    foundTableWithSomeonePrefersThem = true;
                     console.log(`✨ Taula ${table.table_number}: Algú el prefereix!`);
                     
                     // Bonus màxim per reunir preferències
@@ -663,7 +669,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
             }
             
             // Si no troba ningú que el prefereixi, usa estratègia normal
-            if (!foundTableWithSomeoneWhoPrefersThem) {
+            if (!foundTableWithSomeonePrefersThem) {
                 console.log(`❌ No hi ha ningú que el prefereixi a cap taula disponible`);
             }
         }
@@ -747,9 +753,8 @@ async function assignWithoutPreferences(studentsToAssign, tables, options) {
         if (options.variabilityConfig?.randomnessLevel > 0) {
             return Math.random() - 0.5;
         }
-        
-        // Després, per equilibri de notes (determinista)
-        return (b.academic_grade || 0) - (a.academic_grade || 0);
+          // Després, per equilibri de notes (determinista)
+        return (b.effective_grade || 0) - (a.effective_grade || 0);
     });
     
     // Assignació amb selecció probabilística opcional

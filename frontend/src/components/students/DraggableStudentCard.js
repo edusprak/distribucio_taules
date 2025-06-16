@@ -4,26 +4,38 @@ import { useDrag } from 'react-dnd';
 import { ItemTypes } from '../../utils/dndItemTypes'; //
 import { useDragState } from '../../contexts/DragContext'; // Assegura't que el context existeix
 
-// Funció per obtenir el color de fons basat en la nota acadèmica
-const getGradeBackgroundColor = (academicGrade) => {
-  if (academicGrade === null || academicGrade === undefined || isNaN(academicGrade)) {
+// Funció per obtenir el color de fons basat en la nota segons el criteri seleccionat
+const getGradeBackgroundColor = (student, gradeAssignmentCriteria) => {
+  let effectiveGrade = null;
+  
+  if (gradeAssignmentCriteria === 'academic') {
+    effectiveGrade = parseFloat(student.academic_grade);
+  } else if (gradeAssignmentCriteria === 'attitude') {
+    effectiveGrade = parseFloat(student.attitude_grade);
+  } else if (gradeAssignmentCriteria === 'average') {
+    const academicGrade = parseFloat(student.academic_grade);
+    const attitudeGrade = parseFloat(student.attitude_grade);
+    if (!isNaN(academicGrade) && !isNaN(attitudeGrade)) {
+      effectiveGrade = (academicGrade + attitudeGrade) / 2;
+    }
+  }
+  
+  if (effectiveGrade === null || effectiveGrade === undefined || isNaN(effectiveGrade)) {
     return 'white'; // Color per defecte si no hi ha nota
   }
   
-  const grade = parseFloat(academicGrade);
-  
-  if (grade >= 0 && grade <= 3) {
-    return '#e8f5e8';
-  } else if (grade >= 4 && grade <= 7) {
-    return '#fff9e6';
-  } else if (grade >= 8 && grade <= 10) {
-    return '#ffe6e6';
+  if (effectiveGrade >= 0 && effectiveGrade < 4) {
+    return '#ffe6e6'; // Vermell suau per notes baixes
+  } else if (effectiveGrade >= 4 && effectiveGrade < 8) {
+    return '#fff9e6'; // Groc suau per notes mitjanes
+  } else if (effectiveGrade >= 8 && effectiveGrade <= 10) {
+    return '#e8f5e8'; // Verd suau per notes altes
   }
   
   return 'white'; // Color per defecte per notes fora del rang
 };
 
-const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGrade, hasUnsatisfiedPreferences) => {
+const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, student, hasUnsatisfiedPreferences, gradeAssignmentCriteria) => {
   let backgroundColor;
   
   if (isRestricted) {
@@ -31,7 +43,7 @@ const getCardStyle = (isDragging, isRestricted, isBeingDraggedItself, academicGr
   } else if (isBeingDraggedItself) {
     backgroundColor = '#d0e0ff'; // Manté el color quan s'està arrossegant
   } else {
-    backgroundColor = getGradeBackgroundColor(academicGrade); // Usar color basat en la nota
+    backgroundColor = getGradeBackgroundColor(student, gradeAssignmentCriteria); // Usar color basat en el criteri seleccionat
   }
   // Determinar color i gruix de la vora
   let borderColor, borderWidth;
@@ -212,8 +224,8 @@ const getGradeStyle = (grade) => {
 };
 
 
-function DraggableStudentCard({ student, studentsInSameTable, allStudents }) { 
-    // student ara té { id, name, academic_grade, gender, restrictions, preferences, taula_plantilla_id (si està assignat), originalTableId (per al pool) }
+function DraggableStudentCard({ student, studentsInSameTable, allStudents, gradeAssignmentCriteria = 'academic' }) { 
+    // student ara té { id, name, academic_grade, attitude_grade, gender, restrictions, preferences, taula_plantilla_id (si està assignat), originalTableId (per al pool) }
     const { draggedStudentInfo, startDraggingStudent, stopDraggingStudent } = useDragState();
     const [showModal, setShowModal] = useState(false);
 
@@ -253,16 +265,14 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
         if (!student.preferences || !studentsInSameTable) return [];
         const teammateIds = studentsInSameTable.map(s => s.id);
         return student.preferences.filter(prefId => teammateIds.includes(prefId));
-    };
-
-    const [{ isDragging }, drag] = useDrag(() => ({
+    };    const [{ isDragging }, drag] = useDrag(() => ({
         type: ItemTypes.STUDENT,
         item: () => {
-            startDraggingStudent(student.id, student.restrictions || []);
-            return { 
+            startDraggingStudent(student.id, student.restrictions || []);            return { 
                 id: student.id, 
                 name: student.name, 
                 academic_grade: student.academic_grade,
+                attitude_grade: student.attitude_grade,
                 gender: student.gender,
                 restrictions: student.restrictions || [],
                 // originalTableId ara és la taula_plantilla_id actual de l'alumne, o null si ve del pool
@@ -324,17 +334,17 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                     }
                 `}
             </style>
-            
-            <div 
+              <div 
                 ref={drag} 
-                style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student.academic_grade, hasUnsatisfiedPreferences())}
+                style={getCardStyle(isDragging, isRestrictedWithDragged, isThisCardActuallyBeingDragged, student, hasUnsatisfiedPreferences(), gradeAssignmentCriteria)}
                 onClick={handleClick}
             >
                 <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{student.name}</div>
-                <div style={{ fontSize: '0.7em', opacity: 0.8 }}>
-                    {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
+                <div style={{ fontSize: '0.65em', opacity: 0.8, lineHeight: '1.1' }}>
+                    <div>A: {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}</div>
+                    <div>Act: {student.attitude_grade !== null && student.attitude_grade !== undefined ? parseFloat(student.attitude_grade).toFixed(1) : 'N/A'}</div>
                 </div>
-            </div>            {/* Modal d'informació */}
+            </div>{/* Modal d'informació */}
             {showModal && (
                 <div style={modalOverlayStyle} onClick={closeModal}>
                     <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
@@ -353,8 +363,7 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                             >
                                 ×
                             </button>
-                        </div>
-                        <div style={modalBodyStyle} className="modal-body-scroll">
+                        </div>                        <div style={modalBodyStyle} className="modal-body-scroll">
                             <div style={sectionStyle}>
                                 <div style={sectionTitleStyle}>
                                     <span style={{ fontSize: '16px' }}>📊</span>
@@ -363,7 +372,17 @@ function DraggableStudentCard({ student, studentsInSameTable, allStudents }) {
                                 <div style={getGradeStyle(student.academic_grade)}>
                                     {student.academic_grade !== null && student.academic_grade !== undefined ? parseFloat(student.academic_grade).toFixed(1) : 'N/A'}
                                 </div>
-                            </div>                            <div style={sectionStyle}>
+                            </div>
+
+                            <div style={sectionStyle}>
+                                <div style={sectionTitleStyle}>
+                                    <span style={{ fontSize: '16px' }}>🎭</span>
+                                    <span>Nota d'actitud</span>
+                                </div>
+                                <div style={getGradeStyle(student.attitude_grade)}>
+                                    {student.attitude_grade !== null && student.attitude_grade !== undefined ? parseFloat(student.attitude_grade).toFixed(1) : 'N/A'}
+                                </div>
+                            </div><div style={sectionStyle}>
                                 <div style={sectionTitleStyle}>
                                     <span style={{ fontSize: '16px' }}>✅</span>
                                     <span>Preferències</span>

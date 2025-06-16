@@ -46,6 +46,7 @@ const selectStyles = {
 function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
   const [name, setName] = useState('');
   const [academicGrade, setAcademicGrade] = useState('');
+  const [attitudeGrade, setAttitudeGrade] = useState(''); // NOVA NOTA D'ACTITUD
   const [gender, setGender] = useState('');
   const [selectedClass, setSelectedClass] = useState(null);
   const [availableClasses, setAvailableClasses] = useState([]);
@@ -79,11 +80,11 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
     };
     fetchClasses();
   }, []);
-
   useEffect(() => {
     if (studentToEdit) {
       setName(studentToEdit.name || '');
       setAcademicGrade(studentToEdit.academic_grade !== null ? String(studentToEdit.academic_grade) : '');
+      setAttitudeGrade(studentToEdit.attitude_grade !== null ? String(studentToEdit.attitude_grade) : ''); // NOVA LINIA
       setGender(studentToEdit.gender || '');
       
       if (studentToEdit.id_classe_alumne && availableClasses.length > 0) {
@@ -113,36 +114,49 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
         setSelectedPreferences(currentPreferenceObjects);
       } else {
         setSelectedPreferences([]);
-      }
-
-    } else { // Creant nou alumne
+      }    } else { // Creant nou alumne
       setName('');
       setAcademicGrade('');
+      setAttitudeGrade(''); // NOVA LINIA
       setGender('');
       setSelectedClass(null);
       setSelectedRestrictions([]);
       setSelectedPreferences([]); // NOU
     }
   }, [studentToEdit, allStudents, availableClasses]);
-
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!name.trim() || academicGrade.trim() === '') {
-        toast.warn('El nom i la nota acadèmica són obligatoris.');
+    if (!name.trim()) {
+        toast.warn('El nom és obligatori.');
         return;
     }
-    const grade = parseFloat(academicGrade);
-    if (isNaN(grade) || grade < 0 || grade > 10) {
-        toast.warn('La nota acadèmica ha de ser un número entre 0 i 10.');
-        return;
-    }    // S'ha eliminat la validació que impedia un alumne estar tant a preferències com a restriccions
+    
+    // Validació de la nota acadèmica
+    if (academicGrade.trim() !== '') {
+      const grade = parseFloat(academicGrade);
+      if (isNaN(grade) || grade < 0 || grade > 10) {
+          toast.warn('La nota acadèmica ha de ser un número entre 0 i 10.');
+          return;
+      }
+    }
+    
+    // Validació de la nota d'actitud
+    if (attitudeGrade.trim() !== '') {
+      const attitude = parseFloat(attitudeGrade);
+      if (isNaN(attitude) || attitude < 0 || attitude > 10) {
+          toast.warn('La nota d\'actitud ha de ser un número entre 0 i 10.');
+          return;
+      }
+    }
+    
+    // S'ha eliminat la validació que impedia un alumne estar tant a preferències com a restriccions
     const restrictionIds = selectedRestrictions.map(r => r.value);
     const preferenceIds = selectedPreferences.map(p => p.value);
 
-
     const studentData = {
       name,
-      academic_grade: grade,
+      academic_grade: academicGrade.trim() !== '' ? parseFloat(academicGrade) : null,
+      attitude_grade: attitudeGrade.trim() !== '' ? parseFloat(attitudeGrade) : null,
       gender: gender || null,
       id_classe_alumne: selectedClass ? selectedClass.value : null,
       restrictions: restrictionIds,
@@ -162,10 +176,9 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-        />
-      </div>
+        />      </div>
       <div>
-        <label htmlFor="academicGrade" style={labelStyle}>Valor (0-10):</label>
+        <label htmlFor="academicGrade" style={labelStyle}>Nota Acadèmica (0-10):</label>
         <input
           type="number"
           id="academicGrade"
@@ -175,7 +188,21 @@ function StudentForm({ studentToEdit, onSave, onClose, allStudents }) {
           step="0.01"
           min="0"
           max="10"
-          required
+          placeholder="Nota acadèmica opcional"
+        />
+      </div>
+      <div>
+        <label htmlFor="attitudeGrade" style={labelStyle}>Nota d'Actitud (0-10):</label>
+        <input
+          type="number"
+          id="attitudeGrade"
+          style={inputStyle}
+          value={attitudeGrade}
+          onChange={(e) => setAttitudeGrade(e.target.value)}
+          step="0.01"
+          min="0"
+          max="10"
+          placeholder="Nota d'actitud opcional"
         />
       </div>
       <div>

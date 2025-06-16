@@ -3,12 +3,12 @@ const db = require('../db');
 
 // Funció per obtenir tots els alumnes
 const getAllStudents = async (req, res) => {
-  try {
-    const query = `
+  try {    const query = `
       SELECT
         s.id, 
         s.name, 
         s.academic_grade, 
+        s.attitude_grade, 
         s.gender, 
         s.id_classe_alumne,
         c.nom_classe, 
@@ -41,7 +41,7 @@ const getAllStudents = async (req, res) => {
         ) AS preferred_by
       FROM students s
       LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
-      GROUP BY s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe
+      GROUP BY s.id, s.name, s.academic_grade, s.attitude_grade, s.gender, s.id_classe_alumne, c.nom_classe
       ORDER BY s.name ASC;
     `;
     const { rows } = await db.query(query);    const studentsWithDetails = rows.map(student => ({
@@ -61,9 +61,8 @@ const getAllStudents = async (req, res) => {
 // Funció per obtenir un alumne per ID
 const getStudentById = async (req, res) => {
   const { id } = req.params;
-  try {
-    const studentResult = await db.query(
-        `SELECT s.id, s.name, s.academic_grade, s.gender, s.id_classe_alumne, c.nom_classe 
+  try {    const studentResult = await db.query(
+        `SELECT s.id, s.name, s.academic_grade, s.attitude_grade, s.gender, s.id_classe_alumne, c.nom_classe 
          FROM students s
          LEFT JOIN classes c ON s.id_classe_alumne = c.id_classe
          WHERE s.id = $1`, [id]);
@@ -76,6 +75,7 @@ const getStudentById = async (req, res) => {
         id: studentData.id,
         name: studentData.name,
         academic_grade: studentData.academic_grade,
+        attitude_grade: studentData.attitude_grade,
         gender: studentData.gender,
         id_classe_alumne: studentData.id_classe_alumne,
         class_name: studentData.nom_classe 
@@ -113,16 +113,16 @@ const getStudentById = async (req, res) => {
 
 // Funció per crear un nou alumne
 const createStudent = async (req, res) => {
-    // AFEGIT 'preferences' al destructuring
-    const { name, academic_grade, gender, restrictions, id_classe_alumne, preferences } = req.body; 
-    if (!name || academic_grade === undefined) {
-        return res.status(400).json({ message: 'El nom i la nota acadèmica són obligatoris.' });
+    // AFEGIT 'preferences' i 'attitude_grade' al destructuring
+    const { name, academic_grade, attitude_grade, gender, restrictions, id_classe_alumne, preferences } = req.body; 
+    if (!name) {
+        return res.status(400).json({ message: 'El nom és obligatori.' });
     }
     try {
         await db.pool.query('BEGIN');
         const newStudentResult = await db.query(
-            'INSERT INTO students (name, academic_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4) RETURNING id, name, academic_grade, gender, id_classe_alumne',
-            [name, parseFloat(academic_grade), gender, id_classe_alumne ? parseInt(id_classe_alumne) : null]
+            'INSERT INTO students (name, academic_grade, attitude_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, academic_grade, attitude_grade, gender, id_classe_alumne',
+            [name, academic_grade ? parseFloat(academic_grade) : null, attitude_grade ? parseFloat(attitude_grade) : null, gender, id_classe_alumne ? parseInt(id_classe_alumne) : null]
         );
         let newStudent = newStudentResult.rows[0];
         
@@ -200,10 +200,10 @@ const createStudent = async (req, res) => {
 // Funció per actualitzar un alumne
 const updateStudent = async (req, res) => {
     const { id } = req.params;
-    // AFEGIT 'preferences' al destructuring
-    const { name, academic_grade, gender, restrictions, id_classe_alumne, preferences } = req.body;
+    // AFEGIT 'preferences' i 'attitude_grade' al destructuring
+    const { name, academic_grade, attitude_grade, gender, restrictions, id_classe_alumne, preferences } = req.body;
 
-    if (name === undefined && academic_grade === undefined && gender === undefined && restrictions === undefined && id_classe_alumne === undefined && preferences === undefined) {
+    if (name === undefined && academic_grade === undefined && attitude_grade === undefined && gender === undefined && restrictions === undefined && id_classe_alumne === undefined && preferences === undefined) {
         return res.status(400).json({ message: 'S\'ha de proporcionar almenys un camp per actualitzar.' });
     }
 
@@ -219,7 +219,11 @@ const updateStudent = async (req, res) => {
         }
         if (academic_grade !== undefined) {
             fieldsToUpdate.push(`academic_grade = $${queryIndex++}`);
-            values.push(parseFloat(academic_grade));
+            values.push(academic_grade === null || academic_grade === '' ? null : parseFloat(academic_grade));
+        }
+        if (attitude_grade !== undefined) {
+            fieldsToUpdate.push(`attitude_grade = $${queryIndex++}`);
+            values.push(attitude_grade === null || attitude_grade === '' ? null : parseFloat(attitude_grade));
         }
         if (gender !== undefined) {
             fieldsToUpdate.push(`gender = $${queryIndex++}`);
@@ -233,7 +237,7 @@ const updateStudent = async (req, res) => {
         let updatedStudentData;
         if (fieldsToUpdate.length > 0) {
             values.push(id);
-            const updateQuery = `UPDATE students SET ${fieldsToUpdate.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${queryIndex} RETURNING id, name, academic_grade, gender, id_classe_alumne`;
+            const updateQuery = `UPDATE students SET ${fieldsToUpdate.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${queryIndex} RETURNING id, name, academic_grade, attitude_grade, gender, id_classe_alumne`;
             const studentResult = await db.query(updateQuery, values);
             if (studentResult.rows.length === 0) {
                 await db.pool.query('ROLLBACK');
@@ -241,7 +245,7 @@ const updateStudent = async (req, res) => {
             }
             updatedStudentData = studentResult.rows[0];
         } else { // Si només s'actualitzen restriccions o preferències
-            const studentResult = await db.query('SELECT id, name, academic_grade, gender, id_classe_alumne FROM students WHERE id = $1', [id]);
+            const studentResult = await db.query('SELECT id, name, academic_grade, attitude_grade, gender, id_classe_alumne FROM students WHERE id = $1', [id]);
             if (studentResult.rows.length === 0) {
                 await db.pool.query('ROLLBACK');
                 return res.status(404).json({ message: 'Alumne no trobat' });
@@ -465,11 +469,11 @@ const mapRecordsToStudentData = (records, idClasse) => {
         values = recordValues;
       }
     }
-    
-    return {
+      return {
       name: Array.isArray(values) ? values[0] || '' : record.nombre || record.name || record.nom || '',
-      academic_grade: parseFloat(Array.isArray(values) ? values[1] || '0' : record.nota || record.academic_grade || record.grade || '0'),
-      gender: Array.isArray(values) ? values[2] || null : record.genero || record.gender || record.gènere || null,
+      academic_grade: Array.isArray(values) ? (values[1] || null) : (record.nota_academica || record.academic_grade || record.nota || record.grade || null),
+      attitude_grade: Array.isArray(values) ? (values[2] || null) : (record.nota_actitud || record.attitude_grade || null),
+      gender: Array.isArray(values) ? values[3] || null : record.genero || record.gender || record.gènere || null,
       id_classe_alumne: idClasse,
       // Ja no processem restriccions ni preferències des del fitxer
       restrictionsNames: [],
@@ -490,19 +494,30 @@ const processImportedStudents = async (studentsData) => {
       if (!studentData.name) {
         errors.push({ data: studentData, error: 'El nom és obligatori' });
         continue;
-      }
-      
-      try {
-        // Inserir l'estudiant
-        const grade = parseFloat(studentData.academic_grade);
-        if (isNaN(grade) || grade < 0 || grade > 10) {
-          errors.push({ data: studentData, error: 'La nota acadèmica ha de ser un número entre 0 i 10' });
-          continue;
+      }      try {
+        // Validar la nota acadèmica (opcional)
+        let academicGrade = null;
+        if (studentData.academic_grade !== null && studentData.academic_grade !== undefined && studentData.academic_grade !== '') {
+          academicGrade = parseFloat(studentData.academic_grade);
+          if (isNaN(academicGrade) || academicGrade < 0 || academicGrade > 10) {
+            errors.push({ data: studentData, error: 'La nota acadèmica ha de ser un número entre 0 i 10' });
+            continue;
+          }
+        }
+        
+        // Validar la nota d'actitud (opcional)
+        let attitudeGrade = null;
+        if (studentData.attitude_grade !== null && studentData.attitude_grade !== undefined && studentData.attitude_grade !== '') {
+          attitudeGrade = parseFloat(studentData.attitude_grade);
+          if (isNaN(attitudeGrade) || attitudeGrade < 0 || attitudeGrade > 10) {
+            errors.push({ data: studentData, error: 'La nota d\'actitud ha de ser un número entre 0 i 10' });
+            continue;
+          }
         }
         
         const newStudentResult = await db.query(
-          'INSERT INTO students (name, academic_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4) RETURNING id',
-          [studentData.name, grade, studentData.gender, studentData.id_classe_alumne]
+          'INSERT INTO students (name, academic_grade, attitude_grade, gender, id_classe_alumne) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+          [studentData.name, academicGrade, attitudeGrade, studentData.gender, studentData.id_classe_alumne]
         );
         
         const newStudentId = newStudentResult.rows[0].id;

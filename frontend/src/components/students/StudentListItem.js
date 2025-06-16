@@ -42,9 +42,13 @@ const deleteButtonStyle = {
 };
 
 function StudentListItem({ student, onEdit, onDelete }) {
-  const displayGrade = student.academic_grade !== null && student.academic_grade !== undefined 
-                       ? parseFloat(student.academic_grade).toFixed(2) 
-                       : 'N/A';
+  const displayAcademicGrade = student.academic_grade !== null && student.academic_grade !== undefined 
+                               ? parseFloat(student.academic_grade).toFixed(2) 
+                               : 'N/A';
+  
+  const displayAttitudeGrade = student.attitude_grade !== null && student.attitude_grade !== undefined 
+                               ? parseFloat(student.attitude_grade).toFixed(2) 
+                               : 'N/A';
 
   // Funció per convertir el valor de gènere a la seva etiqueta en català
   const getGenderLabel = (genderValue) => {
@@ -66,7 +70,8 @@ function StudentListItem({ student, onEdit, onDelete }) {
     <div style={itemStyle}>
       <div style={studentInfoStyle}>
         <h4>{student.name}</h4>
-        <p>Nota: {displayGrade}</p>
+        <p>Nota Acadèmica: {displayAcademicGrade}</p>
+        <p>Nota d'Actitud: {displayAttitudeGrade}</p>
         <p>Gènere: {getGenderLabel(student.gender)}</p>
         {student.table_id && <p>Assignat a Taula ID: {student.table_id}</p>}
         {student.restrictions && student.restrictions.length > 0 && (
