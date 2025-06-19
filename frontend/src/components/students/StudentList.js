@@ -153,7 +153,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
     } else if (field === 'name' && !editingValue.trim()) {
       alert("El nom de l'alumne no pot estar buit.");
       return;    } else if ((field === 'restrictions' || field === 'preferences')) {
-      updatedValue = editingValue.map(item => item.value);
+      updatedValue = editingValue
+        .filter(item => item && item.value && !isNaN(parseInt(item.value)))
+        .map(item => parseInt(item.value));
       // Eliminada la validació que impedia un alumne estar tant a preferències com a restriccions
     }
     
@@ -470,7 +472,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                   },                  onBlur: () => {
                     // Guardar quan l'usuari fa clic fora del component
                     const restrictionIds = Array.isArray(editingValue) 
-                      ? editingValue.filter(item => item && item.value).map(item => item.value)
+                      ? editingValue
+                          .filter(item => item && item.value && !isNaN(parseInt(item.value)))
+                          .map(item => parseInt(item.value))
                       : [];
                     const updatedStudent = { 
                       ...student, 
@@ -483,7 +487,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                     if (e.key === 'Enter') {
                       // Guardar quan l'usuari prem Enter
                       const restrictionIds = Array.isArray(editingValue) 
-                        ? editingValue.filter(item => item && item.value).map(item => item.value)
+                        ? editingValue
+                            .filter(item => item && item.value && !isNaN(parseInt(item.value)))
+                            .map(item => parseInt(item.value))
                         : [];
                       const updatedStudent = { 
                         ...student, 
@@ -604,7 +610,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                   },                  onBlur: () => {
                     // Guardar quan l'usuari fa clic fora del component
                     const preferenceIds = Array.isArray(editingValue) 
-                      ? editingValue.filter(item => item && item.value).map(item => item.value)
+                      ? editingValue
+                          .filter(item => item && item.value && !isNaN(parseInt(item.value)))
+                          .map(item => parseInt(item.value))
                       : [];
                     const updatedStudent = { 
                       ...student, 
@@ -617,7 +625,9 @@ function StudentList({ students, allStudents, onEditStudent, onDeleteStudent, al
                     if (e.key === 'Enter') {
                       // Guardar quan l'usuari prem Enter
                       const preferenceIds = Array.isArray(editingValue) 
-                        ? editingValue.filter(item => item && item.value).map(item => item.value)
+                        ? editingValue
+                            .filter(item => item && item.value && !isNaN(parseInt(item.value)))
+                            .map(item => parseInt(item.value))
                         : [];
                       const updatedStudent = { 
                         ...student, 

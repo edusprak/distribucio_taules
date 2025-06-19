@@ -104,10 +104,10 @@ const autoAssignStudents = async (req, res) => {
             
             const similarityRate = matches / totalAssignments;
             return similarityRate >= toleranceRate;
-        }let foundUnique = false;
+        }        let foundUnique = false;
         let proposedAssignments = [];
         let warnings = [];
-        const MAX_ATTEMPTS = 25; // Augmentem intents per al nou algorisme
+        const MAX_ATTEMPTS = 500; // Augmentat per donar més oportunitats a modes prioritaris
         let attempt = 0;
         
         while (!foundUnique && attempt < MAX_ATTEMPTS) {
@@ -117,28 +117,50 @@ const autoAssignStudents = async (req, res) => {
             // Cada nou intent reseteja les assignacions i warnings
             proposedAssignments = [];
             warnings = [];
+              // ========== ESTRATÈGIA HÍBRIDA PROGRESSIVA OPTIMITZADA PER PREFERÈNCIES ==========
+            // Intent 1-5: Prioritat absoluta per preferències (100% preferències)
+            // Intent 6-10: Algorisme determinista amb prioritat alta per preferències (90%)
+            // Intent 11-15: Introducció progressiva d'aleatorietat mantenint preferències altes
+            // Intent 16+: Relaxació gradual de criteris secundaris
             
-            // ========== ESTRATÈGIA HÍBRIDA PROGRESSIVA ==========
-            // Intent 1-3: Algorisme determinista (màxima qualitat)
-            // Intent 4-10: Introducció progressiva d'aleatorietat
-            // Intent 11+: Relaxació gradual de criteris secundaris
-            
-            const strategyPhase = attempt <= 3 ? 'deterministic' : 
-                                attempt <= 10 ? 'progressive' : 'relaxed';
-            
-            const variabilityConfig = {
+            const strategyPhase = attempt <= 200 ? 'preferences_ultra' : 
+                                attempt <= 400 ? 'preferences_high' :
+                                attempt <= 500 ? 'progressive' : 'relaxed';
+              const variabilityConfig = {
                 phase: strategyPhase,
-                randomnessLevel: strategyPhase === 'deterministic' ? 0 : 
-                               strategyPhase === 'progressive' ? (attempt - 3) * 0.1 : 0.3,
-                toleranceGradeBalance: strategyPhase === 'deterministic' ? 1.0 : 
+                randomnessLevel: strategyPhase === 'preferences_ultra' ? 0 : 
+                               strategyPhase === 'preferences_high' ? 0 :
+                               strategyPhase === 'progressive' ? (attempt - 10) * 0.1 : 0.3,
+                toleranceGradeBalance: strategyPhase === 'preferences_ultra' ? 0.3 : 
+                                     strategyPhase === 'preferences_high' ? 0.6 :
                                      strategyPhase === 'progressive' ? 0.8 : 0.6,
-                toleranceGenderBalance: strategyPhase === 'deterministic' ? 1.0 : 
+                toleranceGenderBalance: strategyPhase === 'preferences_ultra' ? 0.3 : 
+                                      strategyPhase === 'preferences_high' ? 0.6 :
                                       strategyPhase === 'progressive' ? 0.8 : 0.6,
-                minPreferenceSatisfaction: 0.8, // Sempre mantenim preferències altes
-                allowSimilar: strategyPhase !== 'deterministic'
+                minPreferenceSatisfaction: strategyPhase === 'preferences_ultra' ? 1.0 : 
+                                         strategyPhase === 'preferences_high' ? 0.95 :
+                                         strategyPhase === 'progressive' ? 0.8 : 0.7,
+                allowSimilar: strategyPhase === 'preferences_ultra' ? false : 
+                             strategyPhase === 'preferences_high' ? false : true,
+                prioritizePreferencesAbsolutely: strategyPhase === 'preferences_ultra' || strategyPhase === 'preferences_high',
+                // NOVA: Estratègia de variabilitat controlada per mode ultra
+                ultraVariabilityStrategy: strategyPhase === 'preferences_ultra' ? (attempt - 1) % 5 : null
             };
             
             console.log(`\n🎯 Intent ${attempt} - Estratègia: ${strategyPhase} (aleatorietat: ${variabilityConfig.randomnessLevel})`);
+              if (strategyPhase === 'preferences_ultra') {
+                const strategies = ['preferències mútues primer', 'alumnes populars primer', 'opcions limitades primer', 'equilibri acadèmic prioritari', 'barreja estratègica'];
+                console.log(`💎 MODE ULTRA PRIORITARI: Buscant 100% de preferències satisfetes`);
+                console.log(`   - Estratègia específica: ${strategies[variabilityConfig.ultraVariabilityStrategy]}`);
+                console.log(`   - Bonus preferències: 10000 punts (vs 1000 normal)`);
+                console.log(`   - Reducció altres criteris: 95%`);
+                console.log(`   - Mínim acceptat: ${Math.round(variabilityConfig.minPreferenceSatisfaction * 100)}%`);
+            } else if (strategyPhase === 'preferences_high') {
+                console.log(`🔥 MODE ALTA PRIORITAT: Buscant 95% de preferències satisfetes`);
+                console.log(`   - Bonus preferències: 1000 punts`);
+                console.log(`   - Reducció altres criteris: 80%`);
+                console.log(`   - Mínim acceptat: ${Math.round(variabilityConfig.minPreferenceSatisfaction * 100)}%`);
+            }
             
             // Per cada intent, fem una còpia neta de les taules i els alumnes
             const tablesForThisAttempt = tablesFromPlantilla.map(table => ({
@@ -188,10 +210,45 @@ const autoAssignStudents = async (req, res) => {
                 }
                 
                 proposedAssignments = result.assignments;
-                warnings = result.warnings;
-                
+                warnings = result.warnings;                
                 const executionTime = Date.now() - startTime;
                 console.log(`Intent ${attempt}: ${proposedAssignments.length} assignacions en ${executionTime}ms`);
+                
+                // Validació especial per modes ultra prioritaris: comprovar satisfacció de preferències
+                if ((variabilityConfig.phase === 'preferences_ultra' || variabilityConfig.phase === 'preferences_high') && usePreferences) {
+                    const studentsWithPrefs = studentsToAssign.filter(s => s.preferences && s.preferences.length > 0);
+                    let satisfiedCount = 0;
+                    
+                    for (const student of studentsWithPrefs) {
+                        const assignment = proposedAssignments.find(a => a.studentId === student.id);
+                        if (assignment) {
+                            const tablemates = proposedAssignments
+                                .filter(a => a.tableId === assignment.tableId && a.studentId !== student.id)
+                                .map(a => a.studentId);
+                            
+                            const hasPreferredTablemate = student.preferences.some(prefId => 
+                                tablemates.includes(prefId)
+                            );
+                            
+                            if (hasPreferredTablemate) {
+                                satisfiedCount++;
+                            }
+                        }
+                    }
+                    
+                    const satisfactionRate = studentsWithPrefs.length > 0 ? 
+                        (satisfiedCount / studentsWithPrefs.length) : 1;
+                    
+                    console.log(`🎯 Validació mode ultra prioritari: ${satisfiedCount}/${studentsWithPrefs.length} preferències satisfetes (${Math.round(satisfactionRate * 100)}%)`);
+                    
+                    // En modes ultra prioritaris, només acceptem solucions que compleixin el mínim de satisfacció
+                    if (satisfactionRate < variabilityConfig.minPreferenceSatisfaction) {
+                        console.log(`❌ Solució rebutjada: satisfacció ${Math.round(satisfactionRate * 100)}% < mínim ${Math.round(variabilityConfig.minPreferenceSatisfaction * 100)}%`);
+                        continue; // Intentar de nou
+                    } else {
+                        console.log(`✅ Solució acceptada: satisfacció ${Math.round(satisfactionRate * 100)}% >= mínim ${Math.round(variabilityConfig.minPreferenceSatisfaction * 100)}%`);
+                    }
+                }
                 
             } catch (error) {
                 console.error(`Error en intent ${attempt}:`, error.message);
@@ -414,29 +471,31 @@ function assignStudentToTable(student, table, assignments) {
 function calculateTableScore(student, table, options) {
     const { overallAverageGrade, balanceByGender, usePreferences, variabilityConfig } = options;
     let score = 0;
-    
-    // PRIORITAT 1: Preferències (sempre mantenim aquesta prioritat alta)
+      // PRIORITAT 1: Preferències (amb bonus ultra-alts en modes prioritaris)
     if (usePreferences && student.preferences && student.preferences.length > 0) {
         const hasPreferredByStudentInTable = table.students_assigned.some(
             assigned => student.preferences.includes(assigned.id)
-        );
-        
-        // Bonus MOLT gran per tenir un preferit
+        );        // Bonus gran per tenir un preferit (adaptat segons el mode)
         if (hasPreferredByStudentInTable) {
-            score += 1000;
+            const basePreferenceBonus = variabilityConfig?.phase === 'preferences_ultra' ? 10000 : 1000;
+            score += basePreferenceBonus;
+            
+            if (variabilityConfig?.phase === 'preferences_ultra') {
+            } else if (variabilityConfig?.phase === 'preferences_high') {
+            }
         }
         
         // Bonus si algú a la taula prefereix aquest alumne
         const studentsInTablePreferringThis = table.students_assigned.filter(
             assigned => assigned.preferences && assigned.preferences.includes(student.id)
         ).length;
-        
-        if (studentsInTablePreferringThis > 0) {
-            score += 200;
+          if (studentsInTablePreferringThis > 0) {
+            const mutualPreferenceBonus = variabilityConfig?.phase === 'preferences_ultra' ? 5000 : 200;
+            score += mutualPreferenceBonus;
         }
-    }
-
-    // PRIORITAT 2: Equilibri acadèmic (amb tolerància configurable)
+    }    // Aplicar factor de reducció per altres criteris en modes de prioritat absoluta de preferències
+    const criteriaReductionFactor = variabilityConfig?.phase === 'preferences_ultra' ? 0.05 : 
+                                   variabilityConfig?.phase === 'preferences_high' ? 0.2 : 1.0;// PRIORITAT 2: Equilibri acadèmic (amb tolerància configurable i reducció en modes prioritaris)
     const studentGrade = student.academic_grade;
     if (overallAverageGrade !== null && !isNaN(studentGrade)) {
         const studentsWithGrades = table.students_assigned.filter(s => !isNaN(s.academic_grade));
@@ -444,14 +503,14 @@ function calculateTableScore(student, table, options) {
         const newCount = studentsWithGrades.length + 1;
         const newAvg = newCount > 0 ? newGradeSum / newCount : overallAverageGrade;
         
-        // Aplicar tolerància configurable
+        // Aplicar tolerància configurable i factor de reducció
         const toleranceGrade = variabilityConfig?.toleranceGradeBalance || 1.0;
         const gradeDiff = Math.abs(newAvg - overallAverageGrade);
-        const gradeWeight = toleranceGrade * 10;
+        const gradeWeight = toleranceGrade * 10 * criteriaReductionFactor;
         score -= gradeDiff * gradeWeight;
     }
 
-    // PRIORITAT 3: Equilibri de gènere (amb tolerància configurable)
+    // PRIORITAT 3: Equilibri de gènere (amb tolerància configurable i reducció en modes prioritaris)
     if (balanceByGender && student.gender && (student.gender === 'male' || student.gender === 'female')) {
         let maleCount = table.current_male_count;
         let femaleCount = table.current_female_count;
@@ -463,19 +522,19 @@ function calculateTableScore(student, table, options) {
         if (totalStudents > 1) {
             const toleranceGender = variabilityConfig?.toleranceGenderBalance || 1.0;
             const genderDiff = Math.abs(maleCount - femaleCount);
-            const genderWeight = toleranceGender * 5;
+            const genderWeight = toleranceGender * 5 * criteriaReductionFactor;
             score -= genderDiff * genderWeight;
             
-            // Bonus per equilibri perfecte (només si tolerància és alta)
-            if (genderDiff <= 1 && toleranceGender >= 0.8) {
-                score += 5;
+            // Bonus per equilibri perfecte (només si tolerància és alta i no estem en mode ultra prioritari)
+            if (genderDiff <= 1 && toleranceGender >= 0.8 && variabilityConfig?.phase !== 'preferences_ultra') {
+                score += 5 * criteriaReductionFactor;
             }
         }
     }
 
-    // PRIORITAT 4: Distribució equilibrada de capacitat
+    // PRIORITAT 4: Distribució equilibrada de capacitat (també amb reducció en modes prioritaris)
     const remainingAfter = table.capacity - (table.current_occupancy + 1);
-    score += remainingAfter * 1;
+    score += remainingAfter * 1 * criteriaReductionFactor;
 
     // AFEGIR VARIABILITAT: Component aleatori segons configuració
     if (variabilityConfig?.randomnessLevel > 0) {
@@ -512,8 +571,8 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
             // Preferència mútua sense restriccions
             if (studentA.preferences.includes(studentB.id) && 
                 studentB.preferences.includes(studentA.id) &&
-                !studentA.restrictions?.includes(studentB.id) &&
-                !studentB.restrictions?.includes(studentA.id)) {
+                !studentA.restriccions?.includes(studentB.id) &&
+                !studentB.restriccions?.includes(studentA.id)) {
                     
                 mutualPairs.push({
                     studentA,
@@ -571,9 +630,14 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         .flatMap(s => s.preferences);
     
     const studentsPreferredByOthers = new Set(allPreferences);
+      console.log(`\n🎯 Alumnes preferits per altres: [${Array.from(studentsPreferredByOthers).join(', ')}]`);
     
-    console.log(`\n🎯 Alumnes preferits per altres: [${Array.from(studentsPreferredByOthers).join(', ')}]`);
-      // Ordenem per prioritat avançada amb variabilitat opcional
+    // NOVA LÒGICA: Aplicar diferents estratègies d'ordenació en mode ultra per explorar variabilitat
+    if (options.variabilityConfig?.ultraVariabilityStrategy !== null && options.variabilityConfig?.ultraVariabilityStrategy !== undefined) {
+        const strategy = options.variabilityConfig.ultraVariabilityStrategy;
+        console.log(`🧠 Aplicant estratègia ultra ${strategy}: ${['preferències mútues primer', 'alumnes populars primer', 'opcions limitades primer', 'equilibri acadèmic prioritari', 'barreja estratègica'][strategy]}`);
+    }
+      // Ordenem per prioritat avançada amb variabilitat controlada per mode ultra    // Ordenem per prioritat avançada amb variabilitat controlada per mode ultra
     remainingStudents.sort((a, b) => {
         const validTablesA = tables.filter(t => canAssignToTable(a, t)).length;
         const validTablesB = tables.filter(t => canAssignToTable(b, t)).length;
@@ -584,6 +648,15 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
         const isPreferredA = studentsPreferredByOthers.has(a.id);
         const isPreferredB = studentsPreferredByOthers.has(b.id);
         
+        // NOVA LÒGICA: Aplicar diferents criteris segons l'estratègia ultra
+        const ultraStrategy = options.variabilityConfig?.ultraVariabilityStrategy;
+        if (ultraStrategy !== null && ultraStrategy !== undefined) {
+            return applySortingStrategy(a, b, ultraStrategy, { 
+                validTablesA, validTablesB, hasPrefsA, hasPrefsB, isPreferredA, isPreferredB, studentsPreferredByOthers 
+            });
+        }
+        
+        // LÒGICA ORIGINAL: Quan no hi ha estratègia ultra específica
         // PRIORITAT 1: Alumnes amb preferències van absolutament primer (sempre)
         if (hasPrefsA && !hasPrefsB) return -1;
         if (!hasPrefsA && hasPrefsB) return 1;
@@ -649,7 +722,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
                 );
                 
                 if (someonePrefersThem) {
-                    foundTableWithSomeoneWhoPrefersThem = true;
+                    foundTableWithSomeonePrefersThem = true;
                     console.log(`✨ Taula ${table.table_number}: Algú el prefereix!`);
                     
                     // Bonus màxim per reunir preferències
@@ -663,7 +736,7 @@ async function assignWithPreferences(studentsToAssign, tables, options) {
             }
             
             // Si no troba ningú que el prefereixi, usa estratègia normal
-            if (!foundTableWithSomeoneWhoPrefersThem) {
+            if (!foundTableWithSomeonePrefersThem) {
                 console.log(`❌ No hi ha ningú que el prefereixi a cap taula disponible`);
             }
         }
@@ -908,6 +981,84 @@ function assignRemainingStudentsOptimal(students, tables, options) {
     }
     
     return { assignments, warnings };
+}
+
+/**
+ * Aplica diferents estratègies d'ordenació per explorar variabilitat en mode ultra
+ */
+function applySortingStrategy(a, b, strategy, context) {
+    const { validTablesA, validTablesB, hasPrefsA, hasPrefsB, isPreferredA, isPreferredB, studentsPreferredByOthers } = context;
+    
+    // Sempre prioritzar alumnes amb preferències primer (invariant en totes les estratègies)
+    if (hasPrefsA && !hasPrefsB) return -1;
+    if (!hasPrefsA && hasPrefsB) return 1;
+    
+    switch (strategy) {
+        case 0: // "preferències mútues primer"
+            // Prioritza alumnes que tenen més preferències mútues
+            if (hasPrefsA && hasPrefsB) {
+                const mutualCountA = a.preferences.filter(id => studentsPreferredByOthers.has(a.id) && a.preferences.includes(id)).length;
+                const mutualCountB = b.preferences.filter(id => studentsPreferredByOthers.has(b.id) && b.preferences.includes(id)).length;
+                if (mutualCountA !== mutualCountB) return mutualCountB - mutualCountA; // Més mútues primer
+                
+                // Després per opcions limitades
+                if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+                return a.preferences.length - b.preferences.length;
+            }
+            break;
+            
+        case 1: // "alumnes populars primer"
+            // Prioritza alumnes que són preferits per molts altres
+            if (hasPrefsA && hasPrefsB) {
+                const popularityA = Array.from(studentsPreferredByOthers).filter(id => a.preferences.includes(id)).length;
+                const popularityB = Array.from(studentsPreferredByOthers).filter(id => b.preferences.includes(id)).length;
+                if (popularityA !== popularityB) return popularityB - popularityA; // Més populars primer
+                
+                // Després per opcions limitades
+                if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+                return a.preferences.length - b.preferences.length;
+            }
+            break;
+            
+        case 2: // "opcions limitades primer" (estratègia original)
+            if (hasPrefsA && hasPrefsB) {
+                if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+                return a.preferences.length - b.preferences.length;
+            }
+            break;
+            
+        case 3: // "equilibri acadèmic prioritari"
+            // Ordena per nota acadèmica per promoure equilibri diferents
+            if (hasPrefsA && hasPrefsB) {
+                const gradeA = parseFloat(a.academic_grade) || 5;
+                const gradeB = parseFloat(b.academic_grade) || 5;
+                if (Math.abs(gradeA - gradeB) > 0.1) return gradeB - gradeA; // Notes més altes primer
+                
+                // Després per opcions limitades
+                if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+                return a.preferences.length - b.preferences.length;
+            }
+            break;
+            
+        case 4: // "barreja estratègica"
+            // Combina múltiples criteris amb pesos diferents
+            if (hasPrefsA && hasPrefsB) {
+                const scoreA = validTablesA * 10 + a.preferences.length * 5 + (parseFloat(a.academic_grade) || 5);
+                const scoreB = validTablesB * 10 + b.preferences.length * 5 + (parseFloat(b.academic_grade) || 5);
+                if (Math.abs(scoreA - scoreB) > 0.1) return scoreA - scoreB; // Score més baix primer (menys opcions)
+                return a.preferences.length - b.preferences.length;
+            }
+            break;
+    }
+    
+    // Criteri per alumnes preferits (comú a totes les estratègies)
+    if (isPreferredA && !isPreferredB) return -1;
+    if (!isPreferredA && isPreferredB) return 1;
+    
+    // Criteri final: menys opcions primer
+    if (validTablesA !== validTablesB) return validTablesA - validTablesB;
+    
+    return 0;
 }
 
 module.exports = {

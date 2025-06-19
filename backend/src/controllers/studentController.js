@@ -131,13 +131,24 @@ const createStudent = async (req, res) => {
             newStudent.class_name = classeRes.rows.length > 0 ? classeRes.rows[0].nom_classe : null;
         } else {
             newStudent.class_name = null;
-        }
-
-        let createdRestrictionsIds = [];
+        }        let createdRestrictionsIds = [];
         if (restrictions && restrictions.length > 0) {
             for (const restrictedStudentId of restrictions) {
-                const id1 = Math.min(newStudent.id, parseInt(restrictedStudentId));
-                const id2 = Math.max(newStudent.id, parseInt(restrictedStudentId));
+                // Validar que restrictedStudentId és un valor vàlid
+                if (!restrictedStudentId || restrictedStudentId === null || restrictedStudentId === undefined) {
+                    continue;
+                }
+                
+                const parsedRestrictedId = parseInt(restrictedStudentId);
+                
+                // Verificar que el valor és un número vàlid
+                if (isNaN(parsedRestrictedId)) {
+                    console.warn(`ID invàlid trobat en restriccions durante creació: restrictedStudentId=${restrictedStudentId}`);
+                    continue;
+                }
+                
+                const id1 = Math.min(newStudent.id, parsedRestrictedId);
+                const id2 = Math.max(newStudent.id, parsedRestrictedId);
                 if (id1 === id2) continue;
                 try {
                     await db.query(
@@ -152,16 +163,29 @@ const createStudent = async (req, res) => {
                 }
             }
         }
-        newStudent.restrictions = createdRestrictionsIds;        // Desar preferències (unidireccionals)
+        newStudent.restrictions = createdRestrictionsIds;        // Desar preferències (unidireccionals amb validació millorada)
         let createdPreferencesIds = [];
         if (preferences && preferences.length > 0) {
             for (const preferredStudentId of preferences) {
+                // Validar que preferredStudentId és un valor vàlid
+                if (!preferredStudentId || preferredStudentId === null || preferredStudentId === undefined) {
+                    continue;
+                }
+                
+                const parsedPreferredId = parseInt(preferredStudentId);
+                
+                // Verificar que el valor és un número vàlid
+                if (isNaN(parsedPreferredId)) {
+                    console.warn(`ID invàlid trobat en preferències durante creació: preferredStudentId=${preferredStudentId}`);
+                    continue;
+                }
+                
                 // Ja no ordenem, perquè volem preservar la direccionalitat
-                if (newStudent.id === parseInt(preferredStudentId)) continue; // No es pot tenir preferència amb si mateix
+                if (newStudent.id === parsedPreferredId) continue; // No es pot tenir preferència amb si mateix
                 try {
                     await db.query(
                         'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
-                        [newStudent.id, parseInt(preferredStudentId)]
+                        [newStudent.id, parsedPreferredId]
                     );
                     createdPreferencesIds.push(preferredStudentId);
                 } catch (preferenceError) {
@@ -254,16 +278,28 @@ const updateStudent = async (req, res) => {
             updatedStudentData.class_name = classeRes.rows.length > 0 ? classeRes.rows[0].nom_classe : null;
         } else {
             updatedStudentData.class_name = null;
-        }
-
-        // Gestió de restriccions (es manté igual)
+        }        // Gestió de restriccions (amb validació millorada)
         if (restrictions !== undefined) {
             await db.query('DELETE FROM student_restrictions WHERE student_id_1 = $1 OR student_id_2 = $1', [id]);
             let updatedStudentRestrictionsIds = [];
             if (restrictions.length > 0) {
                 for (const restrictedStudentId of restrictions) {
-                    const id1 = Math.min(parseInt(id), parseInt(restrictedStudentId));
-                    const id2 = Math.max(parseInt(id), parseInt(restrictedStudentId));
+                    // Validar que restrictedStudentId és un valor vàlid
+                    if (!restrictedStudentId || restrictedStudentId === null || restrictedStudentId === undefined) {
+                        continue;
+                    }
+                    
+                    const parsedRestrictedId = parseInt(restrictedStudentId);
+                    const parsedCurrentId = parseInt(id);
+                    
+                    // Verificar que ambdós valors són números vàlids
+                    if (isNaN(parsedRestrictedId) || isNaN(parsedCurrentId)) {
+                        console.warn(`ID invàlid trobat en restriccions: restrictedStudentId=${restrictedStudentId}, currentId=${id}`);
+                        continue;
+                    }
+                    
+                    const id1 = Math.min(parsedCurrentId, parsedRestrictedId);
+                    const id2 = Math.max(parsedCurrentId, parsedRestrictedId);
                     if (id1 === id2) continue;
                     try {
                         await db.query(
@@ -287,24 +323,38 @@ const updateStudent = async (req, res) => {
                 [id]
             );
             updatedStudentData.restrictions = currentRestrictionsResult.rows.map(r => r.restricted_with_student_id);
-        }        // Gestió de preferències (unidireccionals)
+        }        // Gestió de preferències (unidireccionals amb validació millorada)
         if (preferences !== undefined) {
             await db.query('DELETE FROM student_preferences WHERE student_id_1 = $1', [id]);
             let updatedStudentPreferencesIds = [];
             if (preferences.length > 0) {
                 for (const preferredStudentId of preferences) {
+                    // Validar que preferredStudentId és un valor vàlid
+                    if (!preferredStudentId || preferredStudentId === null || preferredStudentId === undefined) {
+                        continue;
+                    }
+                    
+                    const parsedPreferredId = parseInt(preferredStudentId);
+                    const parsedCurrentId = parseInt(id);
+                    
+                    // Verificar que ambdós valors són números vàlids
+                    if (isNaN(parsedPreferredId) || isNaN(parsedCurrentId)) {
+                        console.warn(`ID invàlid trobat en preferències: preferredStudentId=${preferredStudentId}, currentId=${id}`);
+                        continue;
+                    }
+                    
                     // Ja no ordenem els IDs perquè volem preservar la direccionalitat
-                    if (parseInt(id) === parseInt(preferredStudentId)) continue;
+                    if (parsedCurrentId === parsedPreferredId) continue;
                     try {
                         await db.query(
                             'INSERT INTO student_preferences (student_id_1, student_id_2) VALUES ($1, $2)',
-                            [parseInt(id), parseInt(preferredStudentId)]
+                            [parsedCurrentId, parsedPreferredId]
                         );
                         updatedStudentPreferencesIds.push(preferredStudentId);
                     } catch (preferenceError) {
                          // Ignorar unique_violation, però llançar error si és FK
                         if (preferenceError.code === '23503') {
-                            console.warn(`Error de FK creant preferència entre ${id1} i ${id2}: un dels alumnes no existeix.`);
+                            console.warn(`Error de FK creant preferència entre ${parsedCurrentId} i ${parsedPreferredId}: un dels alumnes no existeix.`);
                             // Opcionalment, podries decidir si continuar o fer rollback/retornar error
                         } else if (preferenceError.code !== '23505') {
                             throw preferenceError;
