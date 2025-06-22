@@ -1,7 +1,8 @@
 // frontend/src/pages/ClassroomArrangementPage.js
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { DragProvider } from '../contexts/DragContext';
+import { useDistributionCache } from '../contexts/DistributionCacheContext';
 import studentService from '../services/studentService';
 import plantillaAulaService from '../services/plantillaAulaService';
 import distribucioService from '../services/distribucioService';
@@ -12,6 +13,7 @@ import DroppableTable from '../components/tables/DroppableTable';
 import StudentPoolDropZone from '../components/students/StudentPoolDropZone';
 import ConfirmModal from '../components/ConfirmModal';
 import ExportDistributionButton from '../components/export/ExportDistributionButton';
+import UndoRedoButtons from '../components/distribution/UndoRedoButtons';
 import axios from 'axios';
 import Select from 'react-select'; // Per al selector de classes
 import { Box, Paper, Typography, Button, TextField, Checkbox, FormControlLabel, Divider, CircularProgress, MenuItem, Select as MuiSelect, InputLabel, FormControl, Alert, Tooltip } from '@mui/material';
@@ -80,35 +82,45 @@ const TablesZone = styled(Box)(({ theme }) => ({
 }));
 
 function ClassroomArrangementPageContent() {
+    // Utilitzar el context de distribució
+    const { state: cacheState, actions: cacheActions } = useDistributionCache();
+    
     const [allStudents, setAllStudents] = useState([]);
-    const [displayedStudents, setDisplayedStudents] = useState([]);
     
     const [plantillesAula, setPlantillesAula] = useState([]);
-    const [selectedPlantillaId, setSelectedPlantillaId] = useState('');
-    const [activePlantilla, setActivePlantilla] = useState(null);
-
     const [distribucionsDesades, setDistribucionsDesades] = useState([]);
-    const [selectedDistribucioId, setSelectedDistribucioId] = useState('');
-    const [activeDistribucioInfo, setActiveDistribucioInfo] = useState(null);
 
     const [nomNovaDistribucio, setNomNovaDistribucio] = useState('');
     const [descNovaDistribucio, setDescNovaDistribucio] = useState('');
 
     const [availableClasses, setAvailableClasses] = useState([]); // Llista de totes les classes de la BD { value: id_classe, label: nom_classe }
-    const [selectedFilterClasses, setSelectedFilterClasses] = useState([]); // Classes seleccionades per al filtre { value: id_classe, label: nom_classe }
-
 
     const [loading, setLoading] = useState({ global: true, plantilles: true, distribucions: false, autoAssign: false, classes: true });
     const [error, setError] = useState({ global: null, plantilla: null, distribucio: null, autoAssign: null, classes: null });    const [isProcessingAutoAssign, setIsProcessingAutoAssign] = useState(false);
-    const [balanceByGender, setBalanceByGender] = useState(false);
-    const [usePreferences, setUsePreferences] = useState(true);
     const [lastAssignmentMetrics, setLastAssignmentMetrics] = useState(null);
     
     // Nova funcionalitat: Mètriques dinàmiques
     const [currentMetrics, setCurrentMetrics] = useState(null);
 
     const [isConfirmDeleteDistribucioOpen, setIsConfirmDeleteDistribucioOpen] = useState(false);
-    const [distribucioToDelete, setDistribucioToDelete] = useState(null);
+    const [distribucioToDelete, setDistribucioToDelete] = useState(null);    // Variables d'estat des del context
+    const displayedStudents = cacheState.displayedStudents;
+    const selectedPlantillaId = cacheState.selectedPlantillaId;
+    const activePlantilla = cacheState.activePlantilla;
+    const selectedDistribucioId = cacheState.selectedDistribucioId;
+    const activeDistribucioInfo = cacheState.activeDistribucioInfo;
+    const selectedFilterClasses = cacheState.selectedFilterClasses;
+    const balanceByGender = cacheState.balanceByGender;
+    const usePreferences = cacheState.usePreferences;
+
+    // Memorizem les funcions per evitar re-renders
+    const setPlantilla = useCallback((plantilla, id) => {
+        cacheActions.setPlantilla(plantilla, id);
+    }, [cacheActions]);
+
+    const setDisplayedStudentsStable = useCallback((students) => {
+        cacheActions.setDisplayedStudents(students);
+    }, [cacheActions]);
 
     // Càrrega inicial d'alumnes, llista de plantilles i classes
     const fetchInitialData = useCallback(async () => {
@@ -119,10 +131,8 @@ function ClassroomArrangementPageContent() {
                 studentService.getAllStudents(),
                 plantillaAulaService.getAllPlantillesAula(),
                 classService.getAllClasses()
-            ]);
-
-            setAllStudents(studentsRes);
-            setDisplayedStudents([]); // Es poblarà quan es seleccioni plantilla i classes
+            ]);            setAllStudents(studentsRes);
+            // No tocar displayedStudents aquí perquè es carregarà des del caché
 
             if (plantillesRes.success) {
                 setPlantillesAula(plantillesRes.plantilles);
@@ -143,64 +153,52 @@ function ClassroomArrangementPageContent() {
         } finally {
             setLoading(prev => ({ ...prev, global: false, plantilles: false, classes: false }));
         }
-    }, []);
-
-    useEffect(() => {
+    }, []);    useEffect(() => {
         fetchInitialData();
-    }, [fetchInitialData]);
-
-    // Efecte per carregar les taules d'una plantilla i resetejar filtres/distribucions
+    }, [fetchInitialData]);    // Efecte simple per carregar plantilla NOMÉS quan canvia manualment
+    // TEMPORALMENT COMENTAT per evitar bucles infinits
+    /*
     useEffect(() => {
-        if (selectedPlantillaId) {
-            const loadPlantillaDetails = async () => {
-                setLoading(prev => ({ ...prev, global: true }));
-                setError(prev => ({ ...prev, plantilla: null, distribucio: null }));
-                setActiveDistribucioInfo(null);
-                setSelectedDistribucioId('');
-                setSelectedFilterClasses([]); // Reseteja filtre de classes en canviar plantilla
-                setDisplayedStudents([]);   // Neteja alumnes mostrats
-                try {
-                    const response = await plantillaAulaService.getPlantillaAulaById(selectedPlantillaId);
-                    if (response.success) {
-                        setActivePlantilla(response.plantilla);
-                        fetchDistribucionsForPlantilla(selectedPlantillaId);
-                    } else {
-                        throw new Error(response.message || `Error carregant detalls de la plantilla ${selectedPlantillaId}`);
-                    }
-                } catch (err) {
-                    console.error("Error loading plantilla details:", err);
-                    setError(prev => ({ ...prev, plantilla: err.message }));
-                    setActivePlantilla(null);
-                    setDistribucionsDesades([]);
-                } finally {
-                    setLoading(prev => ({ ...prev, global: false }));
+        if (!selectedPlantillaId || plantillesAula.length === 0) return;
+        
+        // Si ja tenim la plantilla carregada, no fer res
+        if (activePlantilla && activePlantilla.id_plantilla === selectedPlantillaId) return;
+        
+        const loadPlantilla = async () => {
+            setLoading(prev => ({ ...prev, global: true }));
+            try {
+                const response = await plantillaAulaService.getPlantillaAulaById(selectedPlantillaId);
+                if (response.success) {
+                    setPlantilla(response.plantilla, selectedPlantillaId);
+                    fetchDistribucionsForPlantilla(selectedPlantillaId);
                 }
-            };
-            loadPlantillaDetails();
-        } else {
-            setActivePlantilla(null);
-            setDistribucionsDesades([]);
-            setDisplayedStudents([]);
-            setSelectedFilterClasses([]);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedPlantillaId]);
-
-
-    // Efecte per actualitzar displayedStudents quan canvia la plantilla activa o el filtre de classes (si NO s'ha carregat una distribució)
-    useEffect(() => {
-        if (activePlantilla && !selectedDistribucioId) { // Només si no hi ha una distribució carregada (que ja gestiona els seus alumnes)
-            let studentsForPool = [];
-            if (selectedFilterClasses.length > 0) {
-                const selectedClassIds = selectedFilterClasses.map(sc => sc.value);
-                studentsForPool = allStudents
-                    .filter(s => s.id_classe_alumne && selectedClassIds.includes(s.id_classe_alumne))
-                    .map(s => ({ ...s, taula_plantilla_id: null }));
+            } catch (err) {
+                console.error("Error loading plantilla:", err);
+                setError(prev => ({ ...prev, plantilla: err.message }));
+            } finally {
+                setLoading(prev => ({ ...prev, global: false }));
             }
-            setDisplayedStudents(studentsForPool);
+        };
+        
+        loadPlantilla();
+    }, [selectedPlantillaId, plantillesAula.length, activePlantilla, setPlantilla]);
+    */
+
+    // Efecte per actualitzar displayedStudents quan canvia el filtre de classes
+    // TEMPORALMENT COMENTAT per evitar bucles infinits
+    /*
+    useEffect(() => {
+        if (activePlantilla && !selectedDistribucioId && selectedFilterClasses.length > 0) {
+            const selectedClassIds = selectedFilterClasses.map(sc => sc.value);
+            const studentsForPool = allStudents
+                .filter(s => s.id_classe_alumne && selectedClassIds.includes(s.id_classe_alumne))
+                .map(s => ({ ...s, taula_plantilla_id: null }));
+            setDisplayedStudentsStable(studentsForPool);
+        } else if (activePlantilla && !selectedDistribucioId && selectedFilterClasses.length === 0) {
+            setDisplayedStudentsStable([]);
         }
-        // Si selectedDistribucioId té valor, handleLoadSelectedDistribucio s'encarrega de displayedStudents
-    }, [activePlantilla, selectedFilterClasses, allStudents, selectedDistribucioId]);
+    }, [selectedFilterClasses, allStudents, activePlantilla, selectedDistribucioId, setDisplayedStudentsStable]);
+    */
 
 
     const fetchDistribucionsForPlantilla = async (plantillaId) => {
@@ -222,8 +220,7 @@ function ClassroomArrangementPageContent() {
             setLoading(prev => ({ ...prev, distribucions: false }));
         }
     };
-    
-    const handleLoadSelectedDistribucio = async () => {
+      const handleLoadSelectedDistribucio = async () => {
         if (!selectedDistribucioId || !activePlantilla) {
             toast.warn("Selecciona una plantilla i una distribució per carregar.");
             return;
@@ -233,16 +230,19 @@ function ClassroomArrangementPageContent() {
             const response = await distribucioService.getDistribucioById(selectedDistribucioId);
             if (response.success && response.distribucio) {
                 const { distribucio } = response;
-                setActiveDistribucioInfo({ nom: distribucio.nom_distribucio, descripcio: distribucio.descripcio_distribucio });
+                cacheActions.setDistribucioInfo(
+                    { nom: distribucio.nom_distribucio, descripcio: distribucio.descripcio_distribucio },
+                    selectedDistribucioId
+                );
                 setNomNovaDistribucio(distribucio.nom_distribucio);
                 setDescNovaDistribucio(distribucio.descripcio_distribucio || '');
 
                 // Establir les classes seleccionades per al filtre segons la distribució carregada
                 if (distribucio.selected_classes && distribucio.selected_classes.length > 0) {
                     const filterClasses = distribucio.selected_classes.map(c => ({ value: c.id_classe, label: c.nom_classe }));
-                    setSelectedFilterClasses(filterClasses);
+                    cacheActions.setFilterClasses(filterClasses);
                 } else {
-                    setSelectedFilterClasses([]); // Si la distribució no tenia filtre de classe, el netegem
+                    cacheActions.setFilterClasses([]); // Si la distribució no tenia filtre de classe, el netegem
                 }
                 
                 // Actualitzar l'estat dels alumnes mostrats basant-se en ELS ALUMNES DE LA DISTRIBUCIÓ
@@ -257,7 +257,14 @@ function ClassroomArrangementPageContent() {
                         taula_plantilla_id: assignacio ? assignacio.taula_plantilla_id : null
                     };
                 });
-                setDisplayedStudents(newDisplayedStudents);
+                
+                // Utilitzar loadDistribucio per crear un nou punt de partida a l'historial
+                cacheActions.loadDistribucio(
+                    newDisplayedStudents,
+                    { nom: distribucio.nom_distribucio, descripcio: distribucio.descripcio_distribucio },
+                    selectedDistribucioId
+                );
+                
                 // Netejar mètriques de l'assignació automàtica en carregar una distribució
                 setLastAssignmentMetrics(null);
                 toast.success(`Distribució "${distribucio.nom_distribucio}" carregada.`);
@@ -298,17 +305,24 @@ function ClassroomArrangementPageContent() {
                 plantilla_id: activePlantilla.id_plantilla,
                 assignacions: assignacionsActuals,
                 selected_classes_ids: selectedFilterClasses.map(sc => sc.value) // AFEGIT
-            };
-
-            const response = await distribucioService.saveDistribucio(payload);
+            };            const response = await distribucioService.saveDistribucio(payload);
             if (response.success) {
                 toast.success(`Distribució "${response.distribucio.nom_distribucio}" desada!`);
                 // No netegem nomNovaDistribucio ni descNovaDistribucio per si es vol sobreescriure.
                 // setNomNovaDistribucio('');
                 // setDescNovaDistribucio('');
-                await fetchDistribucionsForPlantilla(activePlantilla.id_plantilla);
-                setSelectedDistribucioId(response.distribucio.id_distribucio);
-                setActiveDistribucioInfo({ nom: response.distribucio.nom_distribucio, descripcio: response.distribucio.descripcio_distribucio});
+                await fetchDistribucionsForPlantilla(activePlantilla.id_plantilla);                // Actualitzar l'estat amb la nova distribució i netejar l'historial
+                cacheActions.distributionSaved(
+                    { nom: response.distribucio.nom_distribucio, descripcio: response.distribucio.descripcio_distribucio },
+                    response.distribucio.id_distribucio
+                );
+                cacheActions.setPlantilla(activePlantilla, selectedPlantillaId);
+                cacheActions.setFilterClasses(selectedFilterClasses);
+                cacheActions.setDisplayedStudents(displayedStudents);
+                cacheActions.setDistribucioInfo(
+                    { nom: response.distribucio.nom_distribucio, descripcio: response.distribucio.descripcio_distribucio },
+                    response.distribucio.id_distribucio
+                );
             } else {
                 throw new Error(response.message || "No s'ha pogut desar la distribució.");
             }
@@ -331,16 +345,13 @@ function ClassroomArrangementPageContent() {
             setDistribucioToDelete(distribucio);
             setIsConfirmDeleteDistribucioOpen(true);
         }
-    };
-
-    const handleDeleteSelectedDistribucio = async () => {
+    };    const handleDeleteSelectedDistribucio = async () => {
         if (!distribucioToDelete) return;
         setLoading(prev => ({ ...prev, distribucio: true }));
         try {
             await distribucioService.deleteDistribucio(distribucioToDelete.id_distribucio);
             toast.success(`Distribució "${distribucioToDelete.nom_distribucio}" esborrada.`);
-            setSelectedDistribucioId('');
-            setActiveDistribucioInfo(null);
+            cacheActions.setDistribucioInfo(null, '');
             setNomNovaDistribucio('');
             setDescNovaDistribucio('');
             // setSelectedFilterClasses([]); // Opcional: resetejar el filtre de classe
@@ -379,15 +390,15 @@ function ClassroomArrangementPageContent() {
                     return;
                 }
             }        }
-        
-        // Guardar l'estat anterior per comprovar preferències trencades
+          // Guardar l'estat anterior per comprovar preferències trencades
         const previousState = [...displayedStudents];
         
-        setDisplayedStudents(prevStudents =>
-            prevStudents.map(s =>
-                s.id === studentId ? { ...s, taula_plantilla_id: targetTablePlantillaId } : s
-            )
+        const newDisplayedStudents = displayedStudents.map(s =>
+            s.id === studentId ? { ...s, taula_plantilla_id: targetTablePlantillaId } : s
         );
+        
+        cacheActions.setDisplayedStudents(newDisplayedStudents);
+        cacheActions.saveSnapshot(`Alumne mogut a taula`);
         
         // Comprovar preferències trencades després del moviment
         checkBrokenPreferences(studentId, targetTablePlantillaId, previousState);
@@ -402,13 +413,13 @@ function ClassroomArrangementPageContent() {
         }
         
         // Guardar l'estat anterior per comprovar preferències trencades
-        const previousState = [...displayedStudents];
-        
-        setDisplayedStudents(prevStudents =>
-            prevStudents.map(s =>
-                s.id === studentId ? { ...s, taula_plantilla_id: null } : s
-            )
+        const previousState = [...displayedStudents];        
+        const newDisplayedStudents = displayedStudents.map(s =>
+            s.id === studentId ? { ...s, taula_plantilla_id: null } : s
         );
+        
+        cacheActions.setDisplayedStudents(newDisplayedStudents);
+        cacheActions.saveSnapshot(`Alumne desassignat de taula`);
         
         // Comprovar preferències trencades després de moure al pool
         checkBrokenPreferences(studentId, null, previousState);
@@ -419,9 +430,9 @@ function ClassroomArrangementPageContent() {
       const handleClearCurrentAssignments = () => {
         if (!activePlantilla) return;
         if (!window.confirm("Segur que vols treure tots els alumnes de les taules actuals i tornar-los al pool? Els canvis no desats es perdran.")) return;
-        setDisplayedStudents(prevStudents => 
-            prevStudents.map(s => ({ ...s, taula_plantilla_id: null }))
-        );
+        const newDisplayedStudents = displayedStudents.map(s => ({ ...s, taula_plantilla_id: null }));
+        cacheActions.setDisplayedStudents(newDisplayedStudents);
+        cacheActions.saveSnapshot('Totes les assignacions netejades');
         setLastAssignmentMetrics(null); // Netejar mètriques
         toast.info("Totes les assignacions actuals netejades (dels alumnes mostrats).");
     };
@@ -474,14 +485,16 @@ function ClassroomArrangementPageContent() {
                 
                 if (assignments.length === 0) {
                     toast.warn("L'algorisme no ha generat noves assignacions per als alumnes del pool.");
-                } else {
-                    // Aplica directament les assignacions proposades
+                } else {                    // Aplica directament les assignacions proposades
                     let currentDisplayedStudents = [...displayedStudents];
                     assignments.forEach(proposal => {
                         currentDisplayedStudents = currentDisplayedStudents.map(s =>
                             s.id === proposal.studentId ? { ...s, taula_plantilla_id: proposal.tableId } : s
                         );
-                    });                    setDisplayedStudents(currentDisplayedStudents);
+                    });
+                    
+                    cacheActions.setDisplayedStudents(currentDisplayedStudents);
+                    cacheActions.saveSnapshot(`Assignació automàtica aplicada (${assignments.length} alumnes)`);
                     
                     // Guardar mètriques per mostrar
                     setLastAssignmentMetrics(metrics);
@@ -724,13 +737,39 @@ function ClassroomArrangementPageContent() {
           <Typography variant="subtitle1" fontWeight={600} mb={1}>1. Selecciona plantilla</Typography>
           {error.plantilla && <Alert severity="error" sx={{ mb: 1 }}>{error.plantilla}</Alert>}
           <FormControl fullWidth size="small" sx={{ mb: 1 }}>
-            <InputLabel id="plantillaSelectorLabel">Plantilla</InputLabel>
-            <MuiSelect
+            <InputLabel id="plantillaSelectorLabel">Plantilla</InputLabel>            <MuiSelect
               labelId="plantillaSelectorLabel"
               id="plantillaSelector"
               value={selectedPlantillaId}
-              label="Plantilla"
-              onChange={e => setSelectedPlantillaId(e.target.value)}
+              label="Plantilla"              onChange={async (e) => {
+                const newPlantillaId = e.target.value;
+                // Canvi manual i càrrega directa
+                if (newPlantillaId !== selectedPlantillaId) {
+                  if (newPlantillaId === '') {
+                    cacheActions.clearCache();
+                  } else {
+                    // Netejar estat actual
+                    cacheActions.setDistribucioInfo(null, '');
+                    cacheActions.setFilterClasses([]);
+                    cacheActions.setDisplayedStudents([]);
+                    
+                    // Carregar nova plantilla de forma síncrona
+                    setLoading(prev => ({ ...prev, global: true }));
+                    try {
+                      const response = await plantillaAulaService.getPlantillaAulaById(newPlantillaId);
+                      if (response.success) {
+                        cacheActions.setPlantilla(response.plantilla, newPlantillaId);
+                        fetchDistribucionsForPlantilla(newPlantillaId);
+                      }
+                    } catch (err) {
+                      console.error("Error loading plantilla:", err);
+                      setError(prev => ({ ...prev, plantilla: err.message }));
+                    } finally {
+                      setLoading(prev => ({ ...prev, global: false }));
+                    }
+                  }
+                }
+              }}
               disabled={loading.plantilles || loading.global}
             >
               <MenuItem value="">-- Selecciona una Plantilla --</MenuItem>
@@ -747,13 +786,16 @@ function ClassroomArrangementPageContent() {
           <Box>
             <Typography variant="subtitle2" fontWeight={600} mb={1}>Distribució desada</Typography>
             <FormControl fullWidth size="small" sx={{ mb: 1 }}>
-              <InputLabel id="distribucioSelectorLabel">Distribució</InputLabel>
-              <MuiSelect
+              <InputLabel id="distribucioSelectorLabel">Distribució</InputLabel>              <MuiSelect
                 labelId="distribucioSelectorLabel"
                 id="distribucioSelector"
                 value={selectedDistribucioId}
                 label="Distribució"
-                onChange={e => setSelectedDistribucioId(e.target.value)}
+                onChange={e => {
+                  const newDistribucioId = e.target.value;
+                  // El canvi real es farà quan es faci clic a "Carregar distribució"
+                  cacheActions.setDistribucioInfo(activeDistribucioInfo, newDistribucioId);
+                }}
                 disabled={loading.distribucions || distribucionsDesades.length === 0}              >
                 <MenuItem value="">-- Nova distribució / Carregar --</MenuItem>                {distribucionsDesades.map(d => {
                   const tooltipContent = (
@@ -815,12 +857,26 @@ function ClassroomArrangementPageContent() {
         {/* 2. Filtre de classes */}
         {activePlantilla && availableClasses.length > 0 && (
           <Box>
-            <Typography variant="subtitle1" fontWeight={600} mb={1}>2. Filtra per classe</Typography>
-            <Select
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>2. Filtra per classe</Typography>            <Select
               isMulti
               options={availableClasses}
-              value={selectedFilterClasses}
-              onChange={setSelectedFilterClasses}
+              value={selectedFilterClasses}              onChange={(newSelectedClasses) => {
+                const classes = newSelectedClasses || [];
+                cacheActions.setFilterClasses(classes);
+                // cacheActions.saveSnapshot('Filtre de classes canviat'); // Comentat per rendiment
+                  // Actualitzar displayedStudents manualment
+                if (activePlantilla && !selectedDistribucioId && classes.length > 0) {
+                  const selectedClassIds = classes
+                    .filter(sc => sc && sc.value !== undefined) // Filtrar elements vàlids
+                    .map(sc => sc.value);
+                  const studentsForPool = allStudents
+                    .filter(s => s.id_classe_alumne && selectedClassIds.includes(s.id_classe_alumne))
+                    .map(s => ({ ...s, taula_plantilla_id: null }));
+                  cacheActions.setDisplayedStudents(studentsForPool);
+                } else if (activePlantilla && !selectedDistribucioId) {
+                  cacheActions.setDisplayedStudents([]);
+                }
+              }}
               placeholder="Selecciona classes..."
               isDisabled={loading.global || loading.classes}
               noOptionsMessage={() => "No hi ha classes disponibles."}
@@ -835,14 +891,27 @@ function ClassroomArrangementPageContent() {
         )}
         {/* 4. Controls d'assignació */}        {activePlantilla && (
           <Box>
-            <Typography variant="subtitle1" fontWeight={600} mb={1}>3. Modifica la distribució</Typography>
-            <FormControlLabel
-              control={<Checkbox checked={usePreferences} onChange={e => setUsePreferences(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
+            <Typography variant="subtitle1" fontWeight={600} mb={1}>3. Modifica la distribució</Typography>            <FormControlLabel
+              control={<Checkbox 
+                checked={usePreferences}                onChange={e => {
+                  cacheActions.setUsePreferences(e.target.checked);
+                  // cacheActions.saveSnapshot('Configuració de preferències canviada'); // Comentat per rendiment
+                }}
+                size="small" 
+                disabled={isProcessingAutoAssign} 
+              />}
               label={<Typography variant="body2">Usar preferències dels alumnes</Typography>}
               sx={{ mb: 1 }}
             />
             <FormControlLabel
-              control={<Checkbox checked={balanceByGender} onChange={e => setBalanceByGender(e.target.checked)} size="small" disabled={isProcessingAutoAssign} />}
+              control={<Checkbox 
+                checked={balanceByGender}                onChange={e => {
+                  cacheActions.setBalanceGender(e.target.checked);
+                  // cacheActions.saveSnapshot('Configuració d\'equilibri de gènere canviada'); // Comentat per rendiment
+                }}
+                size="small" 
+                disabled={isProcessingAutoAssign} 
+              />}
               label={<Typography variant="body2">Intentar equilibrar per gènere</Typography>}
               sx={{ mb: 1 }}
             />
@@ -856,8 +925,7 @@ function ClassroomArrangementPageContent() {
               sx={{ mb: 1 }}
             >
               {isProcessingAutoAssign ? 'Processant...' : 'Assignar automàticament alumnes no assignats'}
-            </Button>
-            <Button
+            </Button>            <Button
               variant="outlined"
               color="warning"
               fullWidth
@@ -867,6 +935,12 @@ function ClassroomArrangementPageContent() {
               sx={{ mb: 1 }}
             >
               Desassignar tots els alumnes (del filtre actual)            </Button>
+            
+            {/* Botons d'Undo/Redo */}
+            <Box sx={{ mb: 2 }}>
+              <UndoRedoButtons disabled={loading.global || isProcessingAutoAssign} />
+            </Box>
+            
             {error.autoAssign && <Alert severity="error" sx={{ mt: 1 }}>{error.autoAssign}</Alert>}
               {/* Mètriques dinàmiques de la distribució actual */}
             {(currentMetrics || lastAssignmentMetrics) && (

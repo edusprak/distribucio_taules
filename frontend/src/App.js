@@ -17,6 +17,7 @@ import theme from './assets/theme';
 // Importar components d'autenticació
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import { DistributionCacheProvider } from './contexts/DistributionCacheContext';
 
 // Component per botó de logout
 function LogoutButton() {
@@ -77,12 +78,14 @@ function App() {
       <CssBaseline />
       <AuthProvider>
         <ProtectedRoute>
-          <DndProvider backend={HTML5Backend}>
-            <Router>          <div className="App" style={{ width: '100%', maxWidth: '100%' }}>
-                <AppContent />
-              </div>
-            </Router>
-          </DndProvider>
+          <DistributionCacheProvider>
+            <DndProvider backend={HTML5Backend}>
+              <Router>          <div className="App" style={{ width: '100%', maxWidth: '100%' }}>
+                  <AppContent />
+                </div>
+              </Router>
+            </DndProvider>
+          </DistributionCacheProvider>
         </ProtectedRoute>
       </AuthProvider>
     </ThemeProvider>
